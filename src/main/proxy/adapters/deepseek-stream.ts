@@ -9,7 +9,7 @@ import { createBaseChunk } from '../utils/streamToolHandler'
 import { ToolStreamParser } from '../toolCalling/ToolStreamParser'
 import type { ToolCallingPlan } from '../toolCalling/types'
 
-const MODEL_NAME = 'deepseek-chat'
+const MODEL_NAME = 'deepseek-v4'
 
 interface StreamChunk {
   p?: string

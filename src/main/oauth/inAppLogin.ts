@@ -111,18 +111,63 @@ export class InAppLoginManager extends EventEmitter {
       autoHideMenuBar: true,
     })
 
-    this.loginWindow.once('ready-to-show', () => {
-      this.loginWindow?.show()
-      this.emit('status', { status: 'ready', message: 'Login window ready - please log in' })
-    })
+    // Prevent the login page from closing the main app via window.close()
+    // Use a flag to avoid recursive close when complete() calls destroy()
+    let isClosingFromComplete = false
 
-    this.loginWindow.on('closed', () => {
+    this.loginWindow.on('close', (e) => {
+      if (isClosingFromComplete) return
       if (!this.isCompleted) {
+        e.preventDefault()
         this.complete({
           success: false,
           error: 'Login window was closed',
         })
       }
+    })
+
+    this.loginWindow.on('closed', () => {
+      this.loginWindow = null
+    })
+
+    // Handle new window requests (e.g., OAuth redirect, third-party login)
+    // Without this handler, window.open() calls from the login page can crash the app
+    this.loginWindow.webContents.setWindowOpenHandler(({ url }) => {
+      console.log('[InAppLogin] Blocked window.open, navigating instead:', url)
+      // Navigate within the same window instead of opening a new one
+      if (this.loginWindow && !this.loginWindow.isDestroyed()) {
+        this.loginWindow.loadURL(url).catch((error) => {
+          console.error('[InAppLogin] Failed to navigate to:', url, error)
+        })
+      }
+      return { action: 'deny' }
+    })
+
+    // Prevent beforeunload handlers from closing the window unexpectedly
+    this.loginWindow.webContents.on('will-prevent-unload', (event) => {
+      console.log('[InAppLogin] Preventing unload, allowing navigation')
+      event.preventDefault()
+    })
+
+    // Handle render process crashes gracefully
+    this.loginWindow.webContents.on('render-process-gone', (_event, details) => {
+      console.error('[InAppLogin] Render process gone:', details.reason, details.exitCode)
+      if (!this.isCompleted) {
+        this.complete({
+          success: false,
+          error: `Login page crashed: ${details.reason}`,
+        })
+      }
+    })
+
+    // Handle plugin crashes (e.g., GPU process)
+    this.loginWindow.webContents.on('plugin-crashed', (_event, name, version) => {
+      console.error('[InAppLogin] Plugin crashed:', name, version)
+    })
+
+    this.loginWindow.once('ready-to-show', () => {
+      this.loginWindow?.show()
+      this.emit('status', { status: 'ready', message: 'Login window ready - please log in' })
     })
 
     this.loginWindow.loadURL(this.config.loginUrl).catch((error) => {
@@ -490,8 +535,10 @@ export class InAppLoginManager extends EventEmitter {
       this.timeoutId = null
     }
 
+    // Use destroy() instead of close() to avoid re-triggering the 'close' event
+    // which could cause recursive calls and crashes
     if (this.loginWindow && !this.loginWindow.isDestroyed()) {
-      this.loginWindow.close()
+      this.loginWindow.destroy()
     }
 
     this.cleanup()

@@ -443,6 +443,16 @@ export class OAuthManager extends EventEmitter {
             const token = collectedTokens.token
             const realUserID = collectedTokens.realUserID
 
+            if (!token) {
+              console.log('[OAuthManager] MiniMax: Missing token, aborting validation')
+              this.sendProgressToRenderer({
+                status: 'pending',
+                message: 'Waiting for token...',
+              })
+              isValidating = false
+              return
+            }
+
             if (realUserID) {
               const combinedToken = `${realUserID}+${token}`
               validationCredentials = { token: combinedToken }

@@ -12,6 +12,10 @@
   "scripts": {
     "dev": "bash scripts/dev.sh",
     "dev:win": "electron-vite dev",
+    "start:debug": "node start.mjs",
+    "start:debug:dev": "node start.mjs dev",
+    "start:debug:dev:sandbox": "node start.mjs dev:sandbox",
+    "start:debug:dev:nogpu": "node start.mjs dev:nogpu",
     "check:source-artifacts": "node scripts/check-source-artifacts.js",
     "build": "npm run check:source-artifacts && electron-vite build",
     "preview": "electron-vite preview",

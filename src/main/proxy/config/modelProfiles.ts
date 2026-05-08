@@ -115,8 +115,22 @@ export const MODEL_PROFILES: Record<string, ModelProfile> = {
     parsingStrategy: 'balanced',
     streamHandlerType: 'bracket'
   },
-  'deepseek-v3.2': {
-    id: 'deepseek-v3.2',
+  'deepseek-v4': {
+    id: 'deepseek-v4',
+    nativeFunctionCalling: false,
+    preferredFormat: 'bracket',
+    parsingStrategy: 'balanced',
+    streamHandlerType: 'bracket'
+  },
+  'deepseek-v4-vision': {
+    id: 'deepseek-v4-vision',
+    nativeFunctionCalling: false,
+    preferredFormat: 'bracket',
+    parsingStrategy: 'balanced',
+    streamHandlerType: 'bracket'
+  },
+  'deepseek-v4-vision-search': {
+    id: 'deepseek-v4-vision-search',
     nativeFunctionCalling: false,
     preferredFormat: 'bracket',
     parsingStrategy: 'balanced',
