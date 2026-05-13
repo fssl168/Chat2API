@@ -122,9 +122,19 @@ func (a *ZaiAdapter) ValidateToken(credentials map[string]string) (oauth.TokenVa
 		return oauth.TokenValidationResult{Valid: false, Error: "JWT missing required 'id' field"}, nil
 	}
 
-	// Guest check
+	// Guest check (comprehensive, matching chat2api)
+	fmt.Println("[Z.ai] JWT payload parsed:",
+		"id=", id,
+		"email=", payload["email"],
+		"name=", payload["name"])
+
 	if email, ok := payload["email"].(string); ok && oauth.IsGuestEmail(email) {
-		return oauth.TokenValidationResult{Valid: false, Error: "Guest accounts are not allowed"}, nil
+		fmt.Println("[Z.ai] Guest account detected: email indicates guest")
+		return oauth.TokenValidationResult{Valid: false, Error: "Guest accounts are not allowed (email indicates guest)"}, nil
+	}
+	if name, ok := payload["name"].(string); ok && oauth.IsGuestNickname(name) {
+		fmt.Println("[Z.ai] Guest account detected: nickname indicates guest")
+		return oauth.TokenValidationResult{Valid: false, Error: "Guest accounts are not allowed (nickname indicates guest)"}, nil
 	}
 
 	accountInfo := &oauth.OAuthAccountInfo{}

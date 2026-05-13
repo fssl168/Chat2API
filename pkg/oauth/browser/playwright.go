@@ -33,6 +33,10 @@ type PlaywrightController struct {
 	intercepts  []interceptedRequest
 	interceptMu sync.RWMutex
 	cancelWait  context.CancelFunc
+	isClosed    bool
+	closedMu    sync.RWMutex
+	closeCh     chan struct{}
+	closeOnce   sync.Once
 }
 
 func NewPlaywrightController(logger oauth.ProgressCallback) *PlaywrightController {
@@ -43,7 +47,20 @@ func NewPlaywrightController(logger oauth.ProgressCallback) *PlaywrightControlle
 	return &PlaywrightController{
 		flowLogger: fl,
 		intercepts: make([]interceptedRequest, 0),
+		closeCh:    make(chan struct{}),
 	}
+}
+
+// IsClosed returns true if the browser/page has been closed by the user.
+func (p *PlaywrightController) IsClosed() bool {
+	p.closedMu.RLock()
+	defer p.closedMu.RUnlock()
+	return p.isClosed
+}
+
+// WaitForClose blocks until the browser/page is closed.
+func (p *PlaywrightController) WaitForClose() <-chan struct{} {
+	return p.closeCh
 }
 
 // GetFlowLogger returns the flow logger for this controller
@@ -61,7 +78,9 @@ func (p *PlaywrightController) Launch(cfg oauth.BrowserConfig) error {
 
 	p.flowLogger.Step(1, "🚀 Initializing Playwright browser automation",
 		"headless", cfg.Headless,
-		"proxy", cfg.Proxy)
+		"proxy", cfg.Proxy,
+		"width", cfg.Width,
+		"height", cfg.Height)
 
 	pw, err := playwright.Run()
 	if err != nil {
@@ -72,8 +91,25 @@ func (p *PlaywrightController) Launch(cfg oauth.BrowserConfig) error {
 
 	p.flowLogger.Debug("Playwright initialized successfully", "version", "latest")
 
+	// Windows compatibility args to prevent immediate crash/close
+	args := []string{
+		"--disable-gpu",
+		"--disable-dev-shm-usage",
+		"--disable-setuid-sandbox",
+		"--no-sandbox",
+		"--no-first-run",
+		"--disable-default-apps",
+		"--disable-background-timer-throttling",
+		"--disable-backgrounding-occluded-windows",
+		"--disable-renderer-backgrounding",
+	}
+	if cfg.Headless {
+		args = append(args, "--disable-software-rasterizer")
+	}
+
 	launchOpts := playwright.BrowserTypeLaunchOptions{
 		Headless: playwright.Bool(cfg.Headless),
+		Args:     args,
 	}
 
 	if cfg.Proxy != "" {
@@ -81,7 +117,8 @@ func (p *PlaywrightController) Launch(cfg oauth.BrowserConfig) error {
 		p.flowLogger.Debug("Proxy configured", "server", cfg.Proxy)
 	}
 
-	p.flowLogger.Step(2, "🌐 Launching Chromium browser...")
+	p.flowLogger.Step(2, "🌐 Launching Chromium browser...",
+		"args", strings.Join(args, ", "))
 
 	startTime := time.Now()
 	browser, err := pw.Chromium.Launch(launchOpts)
@@ -98,11 +135,30 @@ func (p *PlaywrightController) Launch(cfg oauth.BrowserConfig) error {
 		"headless", cfg.Headless,
 		"duration", duration.Round(time.Millisecond).String())
 
-	p.context, err = browser.NewContext()
+	// Create context with viewport to ensure proper window size
+	// Use larger viewport (1400x900) to ensure page content is fully visible
+	viewportWidth := cfg.Width
+	viewportHeight := cfg.Height
+	if viewportWidth <= 0 {
+		viewportWidth = 1400
+	}
+	if viewportHeight <= 0 {
+		viewportHeight = 900
+	}
+	contextOpts := playwright.BrowserNewContextOptions{
+		Viewport: &playwright.Size{
+			Width:  viewportWidth,
+			Height: viewportHeight,
+		},
+	}
+
+	p.context, err = browser.NewContext(contextOpts)
 	if err != nil {
 		p.flowLogger.Error(fmt.Sprintf("Failed to create context: %v", err))
 		return fmt.Errorf("failed to create browser context: %w", err)
 	}
+
+	p.flowLogger.Info("Browser context created", "viewport", fmt.Sprintf("%dx%d", viewportWidth, viewportHeight))
 
 	p.page, err = p.context.NewPage()
 	if err != nil {
@@ -110,11 +166,81 @@ func (p *PlaywrightController) Launch(cfg oauth.BrowserConfig) error {
 		return fmt.Errorf("failed to create page: %w", err)
 	}
 
+	// Ensure viewport is set correctly on the page too
+	if err := p.page.SetViewportSize(viewportWidth, viewportHeight); err != nil {
+		p.flowLogger.Warn("Failed to set page viewport size", "error", err.Error())
+	}
+
+	// Setup page event handlers BEFORE any navigation
+	p.setupPageEventHandlers()
+
+	// Set page title if provided (for user visibility)
+	if cfg.WindowTitle != "" {
+		_, _ = p.page.Evaluate(fmt.Sprintf(`document.title = "%s"`, cfg.WindowTitle))
+		p.flowLogger.Debug("Window title set", "title", cfg.WindowTitle)
+	}
+
 	p.flowLogger.Step(3, "✅ Browser environment ready",
 		"contextID", "created",
-		"pageID", "created")
+		"pageID", "created",
+		"viewport", fmt.Sprintf("%dx%d", cfg.Width, cfg.Height))
 
 	return nil
+}
+
+func (p *PlaywrightController) setupPageEventHandlers() {
+	if p.page == nil {
+		return
+	}
+
+	// Handle page close (user closed the browser window)
+	p.page.OnClose(func(_ playwright.Page) {
+		p.flowLogger.Warn("Browser window was closed by user")
+		p.closedMu.Lock()
+		p.isClosed = true
+		p.closedMu.Unlock()
+		p.closeOnce.Do(func() { close(p.closeCh) })
+	})
+
+	// Handle page crash
+	p.page.OnCrash(func(_ playwright.Page) {
+		p.flowLogger.Error("Browser page crashed unexpectedly")
+		p.closedMu.Lock()
+		p.isClosed = true
+		p.closedMu.Unlock()
+		p.closeOnce.Do(func() { close(p.closeCh) })
+	})
+
+	// Handle console messages for debugging
+	p.page.OnConsole(func(msg playwright.ConsoleMessage) {
+		if msg.Type() == "error" {
+			p.flowLogger.Debug("Page console error",
+				"text", msg.Text(),
+				"location", fmt.Sprintf("%s:%d", msg.Location().URL, msg.Location().LineNumber))
+		}
+	})
+
+	// Handle popups: block new windows and navigate within same page
+	p.page.OnPopup(func(popup playwright.Page) {
+		p.flowLogger.Info("Popup detected, closing and navigating in main page instead",
+			"popupURL", popup.URL())
+		popupURL := popup.URL()
+		go func() {
+			_ = popup.Close()
+		}()
+		if popupURL != "" && popupURL != "about:blank" {
+			p.flowLogger.Info("Navigating to popup URL in main page", "url", popupURL)
+			_, _ = p.page.Goto(popupURL)
+		}
+	})
+
+	// Handle dialogs (alert, confirm, prompt) - auto-accept to prevent blocking
+	p.page.OnDialog(func(dialog playwright.Dialog) {
+		p.flowLogger.Debug("Dialog appeared, auto-accepting",
+			"type", dialog.Type(),
+			"message", dialog.Message())
+		_ = dialog.Accept()
+	})
 }
 
 func (p *PlaywrightController) Navigate(navigateURL string) error {
@@ -412,7 +538,7 @@ func (e *PlaywrightExtractor) ExtractFromLocalStorage(key string) (string, error
 	return value, nil
 }
 
-func unwrapJSONValue(value string, key string) string {
+func unwrapJSONValue(value string, _ string) string {
 	if value == "" || len(value) < 2 || value[0] != '{' {
 		return value
 	}
@@ -854,9 +980,22 @@ func (e *PlaywrightExtractor) extractOnce(cfg oauth.TokenSource) map[string]stri
 		allCookies, cookieErr := e.ExtractAllCookies()
 		if cookieErr != nil {
 			e.extractLog.Error("ExtractAllCookies failed", "error", cookieErr.Error())
+		} else {
+			// Debug: log all available cookie names to help diagnose missing cookie issues
+			cookieNames := make([]string, 0, len(allCookies))
+			for name := range allCookies {
+				cookieNames = append(cookieNames, name)
+			}
+			e.extractLog.Debug("All cookies from Playwright API",
+				"count", len(allCookies),
+				"names", strings.Join(cookieNames, ", "))
 		}
 
 		jsCookieValue := e.extractCookieViaJS(cfg.CookieName)
+		e.extractLog.Debug("JS cookie read result",
+			"cookieName", cfg.CookieName,
+			"jsValueLength", len(jsCookieValue),
+			"jsValueEmpty", jsCookieValue == "")
 
 		var finalValue string
 		if jsCookieValue != "" {
@@ -868,6 +1007,12 @@ func (e *PlaywrightExtractor) extractOnce(cfg oauth.TokenSource) map[string]stri
 			}
 		} else if apiVal, ok := allCookies[cfg.CookieName]; ok && apiVal != "" {
 			finalValue = apiVal
+			e.extractLog.Debug("Using Playwright API cookie value (JS read failed, possibly httpOnly)",
+				"cookieName", cfg.CookieName,
+				"valueLength", len(apiVal))
+		} else {
+			e.extractLog.Debug("Cookie not found in either JS or Playwright API",
+				"cookieName", cfg.CookieName)
 		}
 
 		if finalValue != "" {
@@ -880,7 +1025,8 @@ func (e *PlaywrightExtractor) extractOnce(cfg oauth.TokenSource) map[string]stri
 				"name", cfg.CookieName,
 				"resultKey", resultKey,
 				"valueLength", len(finalValue),
-				"isJWT", isJWT(finalValue))
+				"isJWT", isJWT(finalValue),
+				"valuePreview", truncate(finalValue, 60))
 		}
 
 		// Extract extra cookies for multi-token providers (e.g. Mimo)
@@ -977,9 +1123,16 @@ func (e *PlaywrightExtractor) extractOnce(cfg oauth.TokenSource) map[string]stri
 			"valuePreview", truncate(v, 60))
 	}
 
-	// 优先返回 JWT 格式的值
+	// 优先返回 JWT 格式的值（带payload调试）
 	for sourceKey, value := range candidates {
 		if isJWT(value) {
+			// Debug: print JWT payload to understand token structure
+			if payload, err := decodeJWTPayload(value); err == nil {
+				payloadStr := fmt.Sprintf("%+v", payload)
+				e.extractLog.Debug("JWT payload decoded",
+					"source", sourceKey,
+					"payload", payloadStr)
+			}
 			e.extractLog.Info("✅ Selected JWT token (preferred)",
 				"source", sourceKey,
 				"valueLength", len(value))
@@ -987,9 +1140,18 @@ func (e *PlaywrightExtractor) extractOnce(cfg oauth.TokenSource) map[string]stri
 		}
 	}
 
-	// Filter out invalid tokens using isValidToken pre-validation
+	// Filter out invalid tokens using isValidToken pre-validation and MinLength check
 	validCandidates := make(map[string]string)
 	for sourceKey, value := range candidates {
+		// Check minimum length if configured (e.g. GLM refresh_token requires 100+ chars)
+		if cfg.MinLength > 0 && len(value) < cfg.MinLength {
+			e.extractLog.Debug("Token too short, skipping (MinLength check)",
+				"source", sourceKey,
+				"valueLength", len(value),
+				"minLength", cfg.MinLength,
+				"valuePreview", truncate(value, 40))
+			continue
+		}
 		if isValidToken(value) {
 			validCandidates[sourceKey] = value
 		} else {
@@ -1035,16 +1197,63 @@ func isValidToken(value string) bool {
 		}
 		if len(parts) == 3 {
 			if payload, err := decodeJWTPayload(value); err == nil {
-				if email, ok := payload["email"].(string); ok && strings.Contains(email, "@guest.com") {
+				// === Guest Account Pre-Detection ===
+				// Check for explicit is_guest flag
+				if isGuest, ok := payload["is_guest"].(bool); ok && isGuest {
 					return false
 				}
-				if hasAnyField(payload, "app_id", "sub", "exp", "id", "user_id", "uid", "email") {
-					return true
+				if isGuest, ok := payload["isGuest"].(bool); ok && isGuest {
+					return false
 				}
+				if isGuest, ok := payload["is_gst"].(bool); ok && isGuest {
+					return false
+				}
+
+				// Guest email check
+				if email, ok := payload["email"].(string); ok && email != "" {
+					if strings.Contains(email, "@guest.com") || strings.Contains(email, "@guest") {
+						return false
+					}
+				}
+
+				// Guest name/nickname check
+				if name, ok := payload["name"].(string); ok && name != "" {
+					lower := strings.ToLower(name)
+					if strings.Contains(name, "访客") ||
+						strings.Contains(lower, "guest") ||
+						strings.Contains(lower, "anonymous") {
+						return false
+					}
+				}
+
+				// Guest sub check
+				if sub, ok := payload["sub"].(string); ok && sub != "" {
+					if strings.Contains(sub, "@guest.com") || strings.Contains(sub, "@guest") {
+						return false
+					}
+				}
+
+				// === Identity Field Validation ===
+				// Must have at least one valid user identity field with non-empty value
+				// exp alone is NOT sufficient (all JWTs including guest ones have exp)
+				identityFields := []string{"app_id", "sub", "id", "user_id", "uid", "email", "name", "nickname", "phone"}
+				hasValidIdentity := false
+				for _, field := range identityFields {
+					if v, ok := payload[field]; ok && v != nil && v != "" {
+						hasValidIdentity = true
+						break
+					}
+				}
+				if !hasValidIdentity {
+					return false
+				}
+
+				return true
 			}
 		}
 	}
 
+	// Non-JWT tokens: length-based acceptance
 	if len(value) >= 20 && !strings.Contains(value, " ") && !strings.Contains(value, "\n") && !strings.Contains(value, "\r") {
 		return true
 	}
@@ -1091,122 +1300,6 @@ func hasAnyField(m map[string]interface{}, keys ...string) bool {
 		}
 	}
 	return false
-}
-
-func (e *PlaywrightExtractor) dumpAllLocalStorage() {
-	e.extractLog.Info("📋 Starting LocalStorage Diagnostic Dump...")
-
-	if e.controller.page == nil {
-		e.extractLog.Warn("Cannot dump LocalStorage: page is nil")
-		return
-	}
-
-	result, err := e.evaluateWithTimeout(`
-		(function() {
-			try {
-				var items = {};
-				for (var i = 0; i < localStorage.length; i++) {
-					var key = localStorage.key(i);
-					var value = localStorage.getItem(key);
-					items[key] = value ? value.substring(0, 50) + '...' : '(empty)';
-				}
-				return { count: localStorage.length, items: items };
-			} catch(e) {
-				return { count: 0, items: {}, error: e.message };
-			}
-		})()
-	`, 5*time.Second)
-
-	if err != nil {
-		e.extractLog.Error("Failed to dump LocalStorage", "error", err.Error())
-		return
-	}
-
-	if result == nil {
-		e.extractLog.Warn("LocalStorage Evaluate returned nil")
-		return
-	}
-
-	e.extractLog.Debug("LocalStorage raw result", "type", fmt.Sprintf("%T", result), "value", fmt.Sprintf("%+v", result))
-
-	if resultMap, ok := result.(map[string]interface{}); ok {
-		keys := make([]string, 0, len(resultMap))
-		for k := range resultMap {
-			keys = append(keys, k)
-		}
-		e.extractLog.Debug("Parsed as map[string]interface{}", "keys", strings.Join(keys, ", "))
-
-		// 尝试解析count字段（可能是int或float64）
-		var count int
-		countVal := resultMap["count"]
-		switch v := countVal.(type) {
-		case int:
-			count = v
-		case float64:
-			count = int(v)
-		case int64:
-			count = int(v)
-		default:
-			e.extractLog.Error("Failed to parse count field",
-				"type", fmt.Sprintf("%T", countVal),
-				"value", fmt.Sprintf("%+v", countVal))
-			return
-		}
-
-		if items, ok := resultMap["items"].(map[string]interface{}); ok {
-			e.extractLog.Info("📋 LocalStorage Diagnostic Dump",
-				"totalCount", count)
-
-			for key, value := range items {
-				if valueStr, ok := value.(string); ok {
-					e.extractLog.Debug("  LocalStorage item",
-						"key", key,
-						"valuePreview", valueStr)
-				} else {
-					e.extractLog.Debug("  LocalStorage item (non-string)",
-						"key", key,
-						"valueType", fmt.Sprintf("%T", value),
-						"value", fmt.Sprintf("%+v", value))
-				}
-			}
-		} else {
-			e.extractLog.Error("Failed to parse items field",
-				"type", fmt.Sprintf("%T", resultMap["items"]))
-		}
-	} else {
-		e.extractLog.Error("Unexpected result format",
-			"expectedType", "map[string]interface{}",
-			"actualType", fmt.Sprintf("%T", result))
-	}
-}
-
-// dumpAllCookies 诊断函数：输出所有cookie信息
-func (e *PlaywrightExtractor) dumpAllCookies() {
-	if e.controller.page == nil {
-		return
-	}
-
-	cookies, err := e.controller.page.Context().Cookies()
-	if err != nil {
-		e.extractLog.Error("Failed to dump Cookies", "error", err.Error())
-		return
-	}
-
-	e.extractLog.Info("🍪 Cookies Diagnostic Dump",
-		"totalCount", len(cookies))
-
-	for _, cookie := range cookies {
-		valuePreview := cookie.Value
-		if len(valuePreview) > 30 {
-			valuePreview = valuePreview[:30] + "..."
-		}
-
-		e.extractLog.Debug("  Cookie item",
-			"name", cookie.Name,
-			"valuePreview", valuePreview,
-			"domain", cookie.Domain,
-			"path", cookie.Path)
-	}
 }
 
 func truncateURL(u string, maxLen int) string {

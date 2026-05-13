@@ -206,6 +206,25 @@ func (a *KimiAdapter) doValidateRequest(token, deviceID, sessionID string, useBe
 		return oauth.TokenValidationResult{}, err
 	}
 
+	fmt.Println("[Kimi] API response received:",
+		"userID=", result.Subscription.UserID,
+		"userName=", result.Subscription.UserName)
+
+	if result.Subscription.UserID == "" || result.Subscription.UserID == "0" {
+		fmt.Println("[Kimi] Guest account detected: empty or zero userID")
+		return oauth.TokenValidationResult{
+			Valid: false,
+			Error: "Guest accounts are not allowed (invalid userID)",
+		}, nil
+	}
+	if oauth.IsGuestNickname(result.Subscription.UserName) {
+		fmt.Println("[Kimi] Guest account detected: nickname indicates guest")
+		return oauth.TokenValidationResult{
+			Valid: false,
+			Error: "Guest accounts are not allowed (nickname indicates guest)",
+		}, nil
+	}
+
 	return oauth.TokenValidationResult{
 		Valid:     true,
 		TokenType: oauth.TokenTypeJWT,

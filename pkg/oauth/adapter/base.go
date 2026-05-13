@@ -180,6 +180,65 @@ func (b *BaseOAuthAdapter) StartLoginWithBrowserAndLogs(options oauth.OAuthOptio
 	return result, flowLog, err
 }
 
+// StartInAppLogin starts a new in-app browser login using InAppLoginManager.
+// This provides a more refined popup login experience aligned with chat2api's InAppLoginManager.
+func (b *BaseOAuthAdapter) StartInAppLogin(options oauth.OAuthOptions) (oauth.OAuthResult, error) {
+	manager := browser.NewInAppLoginManager()
+
+	// Wire up progress callbacks
+	manager.SetStatusCallback(func(status browser.InAppLoginStatus, message string) {
+		var oauthStatus oauth.OAuthStatus
+		switch status {
+		case browser.InAppStatusStarting:
+			oauthStatus = oauth.OAuthStatusPending
+		case browser.InAppStatusReady:
+			oauthStatus = oauth.OAuthStatusPending
+		case browser.InAppStatusExtracting:
+			oauthStatus = oauth.OAuthStatusPending
+		case browser.InAppStatusValidating:
+			oauthStatus = oauth.OAuthStatusPending
+		case browser.InAppStatusCompleted:
+			oauthStatus = oauth.OAuthStatusSuccess
+		case browser.InAppStatusCancelled:
+			oauthStatus = oauth.OAuthStatusCancelled
+		case browser.InAppStatusError:
+			oauthStatus = oauth.OAuthStatusError
+		default:
+			oauthStatus = oauth.OAuthStatusPending
+		}
+		b.EmitProgress(oauthStatus, message, nil)
+	})
+
+	result, err := manager.StartLogin(options.ProviderType, b.getValidatorFunc())
+	if err != nil {
+		return oauth.OAuthResult{
+			Success:      false,
+			ProviderID:   options.ProviderID,
+			ProviderType: options.ProviderType,
+			Error:        err.Error(),
+		}, nil
+	}
+
+	return oauth.OAuthResult{
+		Success:      result.Success,
+		ProviderID:   options.ProviderID,
+		ProviderType: options.ProviderType,
+		Credentials:  result.Credentials,
+		AccountInfo:  result.AccountInfo,
+		Error:        result.Error,
+	}, nil
+}
+
+// getValidatorFunc returns the validator function for InAppLoginManager.
+func (b *BaseOAuthAdapter) getValidatorFunc() func(map[string]string) (oauth.TokenValidationResult, error) {
+	if b.validator == nil {
+		return nil
+	}
+	return func(creds map[string]string) (oauth.TokenValidationResult, error) {
+		return b.validator(creds)
+	}
+}
+
 // doStartLoginWithBrowser contains the actual implementation of browser automation login.
 func (b *BaseOAuthAdapter) doStartLoginWithBrowser(options oauth.OAuthOptions, flowLog *oauth.FlowLogger) (oauth.OAuthResult, error) {
 	// 使用recover防止panic导致浏览器意外关闭
@@ -218,8 +277,11 @@ func (b *BaseOAuthAdapter) doStartLoginWithBrowser(options oauth.OAuthOptions, f
 	// 移除defer ctrl.Close()，改为手动控制浏览器关闭时机
 
 	cfg := oauth.BrowserConfig{
-		Headless: false,
-	}
+			Headless:    false,
+			Width:       1400,
+			Height:      900,
+			WindowTitle: browser.TokenSources[options.ProviderType].WindowTitle,
+		}
 
 	if err := flowLog.TimedAction("Browser Launch", func() error { return ctrl.Launch(cfg) }); err != nil {
 		ctrl.Close() // 启动失败立即关闭

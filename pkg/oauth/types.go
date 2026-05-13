@@ -255,6 +255,9 @@ type TokenSource struct {
 	ResultKey          string   `json:"resultKey,omitempty"`          // key for credentials map, e.g. "token"
 	JSONExtractField   string   `json:"jsonExtractField,omitempty"`   // Extract nested JSON field, e.g. "realUserID" from user_detail_agent
 	JSONExtractField2  string   `json:"jsonExtractField2,omitempty"`  // Second fallback field, e.g. "id"
+	MinLength          int      `json:"minLength,omitempty"`          // Minimum token length to be considered valid (e.g. 100 for refresh tokens)
+	WindowTitle        string   `json:"windowTitle,omitempty"`        // Browser window title for login popup
+	TargetDomains      []string `json:"targetDomains,omitempty"`      // Target domains for cookie scope
 }
 
 // InterceptedRequest captures request/response pairs.
@@ -280,4 +283,7 @@ type BrowserConfig struct {
 	UserDataDir    string
 	Proxy          string
 	BrowserTimeout time.Duration
+	Width          int
+	Height         int
+	WindowTitle    string
 }

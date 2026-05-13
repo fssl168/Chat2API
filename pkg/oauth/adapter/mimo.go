@@ -124,6 +124,15 @@ func (a *MimoAdapter) ValidateToken(credentials map[string]string) (oauth.TokenV
 		return oauth.TokenValidationResult{Valid: false, Error: fmt.Sprintf("HTTP %d: Token validation failed", resp.StatusCode)}, nil
 	}
 
+	fmt.Println("[Mimo] API response received:",
+		"userID=", userID,
+		"statusCode=", resp.StatusCode)
+
+	if userID == "" || userID == "0" {
+		fmt.Println("[Mimo] Guest account detected: empty or zero userID")
+		return oauth.TokenValidationResult{Valid: false, Error: "Guest accounts are not allowed (invalid userID)"}, nil
+	}
+
 	return oauth.TokenValidationResult{
 		Valid:     true,
 		TokenType: oauth.TokenTypeCookie,

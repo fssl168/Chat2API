@@ -90,5 +90,126 @@ func OpenBrowser(url string) error {
 
 // IsGuestEmail checks if the email indicates a guest account.
 func IsGuestEmail(email string) bool {
-	return strings.Contains(email, "@guest.com")
+	return strings.Contains(email, "@guest.com") || strings.Contains(email, "@guest")
+}
+
+// IsGuestNickname checks if the nickname indicates a guest account.
+// Supports both Chinese "访客" and English "Guest" keywords.
+func IsGuestNickname(nickname string) bool {
+	if nickname == "" {
+		return false
+	}
+	lower := strings.ToLower(nickname)
+	return strings.Contains(nickname, "访客") ||
+		strings.Contains(lower, "guest") ||
+		strings.Contains(lower, "anonymous") ||
+		strings.HasPrefix(lower, "user") && len(nickname) <= 10
+}
+
+// IsGuestAccount checks multiple indicators to determine if an account is a guest.
+// This is the comprehensive check used by all providers (matching chat2api logic).
+func IsGuestAccount(isGuest bool, nickname, email string, hasPhoneOrEmail bool) bool {
+	if isGuest {
+		return true
+	}
+	if IsGuestNickname(nickname) {
+		return true
+	}
+	if IsGuestEmail(email) {
+		return true
+	}
+	if !hasPhoneOrEmail {
+		return true
+	}
+	return false
+}
+
+// CheckJWTPayloadForGuest checks JWT payload for guest account indicators.
+// Returns (isGuest, reason) tuple.
+func CheckJWTPayloadForGuest(payload map[string]interface{}) (bool, string) {
+	if payload == nil {
+		return false, ""
+	}
+
+	if email, ok := payload["email"].(string); ok && IsGuestEmail(email) {
+		return true, fmt.Sprintf("email indicates guest: %s", email)
+	}
+
+	if name, ok := payload["name"].(string); ok && IsGuestNickname(name) {
+		return true, fmt.Sprintf("nickname indicates guest: %s", name)
+	}
+
+	if sub, ok := payload["sub"].(string); ok && IsGuestEmail(sub) {
+		return true, fmt.Sprintf("sub field indicates guest: %s", sub)
+	}
+
+	return false, ""
+}
+
+// GuestTokenInfo contains detailed information about why a token was rejected as guest.
+type GuestTokenInfo struct {
+	IsGuest bool
+	Reason  string
+	Details map[string]string
+}
+
+// ValidateTokenForGuest performs comprehensive guest token validation.
+// Works with both JWT tokens (parses payload) and raw tokens (uses heuristics).
+func ValidateTokenForGuest(token string, providerType ProviderType) GuestTokenInfo {
+	result := GuestTokenInfo{
+		Details: make(map[string]string),
+	}
+
+	if token == "" {
+		result.IsGuest = true
+		result.Reason = "token is empty"
+		return result
+	}
+
+	if IsJWT(token) {
+		payload, err := ParseJWT(token)
+		if err != nil {
+			result.Details["parseError"] = err.Error()
+			return result
+		}
+
+		for k, v := range payload {
+			if str, ok := v.(string); ok {
+				if len(str) > 50 {
+					result.Details[k] = str[:50] + "..."
+				} else {
+					result.Details[k] = str
+				}
+			} else if f, ok := v.(float64); ok {
+				result.Details[k] = fmt.Sprintf("%.0f", f)
+			} else if b, ok := v.(bool); ok {
+				result.Details[k] = fmt.Sprintf("%v", b)
+			}
+		}
+
+		isGuest, reason := CheckJWTPayloadForGuest(payload)
+		if isGuest {
+			result.IsGuest = true
+			result.Reason = reason
+			return result
+		}
+
+		if _, ok := payload["email"]; ok {
+			result.Details["hasEmail"] = "true"
+		}
+		if _, ok := payload["phone"]; ok {
+			result.Details["hasPhone"] = "true"
+		}
+		if _, ok := payload["sub"]; ok {
+			result.Details["hasSub"] = "true"
+		}
+		if _, ok := payload["id"]; ok || payload["user_id"] != nil || payload["uid"] != nil {
+			result.Details["hasIdentity"] = "true"
+		}
+	}
+
+	result.Details["tokenLength"] = fmt.Sprintf("%d", len(token))
+	result.Details["provider"] = string(providerType)
+
+	return result
 }

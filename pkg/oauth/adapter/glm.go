@@ -2,10 +2,13 @@ package adapter
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/fssl168/chat2api-go/oauth/pkg/oauth"
@@ -110,6 +113,12 @@ func generateGLMSign(timestamp, nonce string) string {
 func (a *GLMAdapter) ValidateToken(credentials map[string]string) (oauth.TokenValidationResult, error) {
 	refreshToken := credentials["refresh_token"]
 	if refreshToken == "" {
+		refreshToken = credentials["chatglm_refresh_token"]
+	}
+	if refreshToken == "" {
+		refreshToken = credentials["token"]
+	}
+	if refreshToken == "" {
 		return oauth.TokenValidationResult{Valid: false, Error: "Refresh token cannot be empty"}, nil
 	}
 
@@ -141,8 +150,37 @@ func (a *GLMAdapter) ValidateToken(credentials map[string]string) (oauth.TokenVa
 	}
 	defer resp.Body.Close()
 
+	var reader io.Reader = resp.Body
+	if resp.Header.Get("Content-Encoding") == "gzip" {
+		gzReader, gzErr := gzip.NewReader(resp.Body)
+		if gzErr == nil {
+			reader = gzReader
+			defer gzReader.Close()
+		}
+	} else {
+		buf := make([]byte, 2)
+		if n, _ := io.ReadFull(resp.Body, buf); n == 2 && buf[0] == 0x1f && buf[1] == 0x8b {
+			gzReader, gzErr := gzip.NewReader(io.MultiReader(bytes.NewReader(buf), resp.Body))
+			if gzErr == nil {
+				reader = gzReader
+				defer gzReader.Close()
+			} else {
+				reader = io.MultiReader(bytes.NewReader(buf), resp.Body)
+			}
+		} else if n > 0 {
+			reader = io.MultiReader(bytes.NewReader(buf[:n]), resp.Body)
+		}
+	}
+
 	if resp.StatusCode != http.StatusOK {
-		return oauth.TokenValidationResult{Valid: false, Error: "Token is invalid or expired"}, nil
+		body, _ := io.ReadAll(reader)
+		bodyStr := string(body)
+		errDetail := fmt.Sprintf("Token is invalid or expired (HTTP %d, body: %s)", resp.StatusCode, truncate(bodyStr, 200))
+		// Add more specific guidance for HTTP 400 which often indicates a guest/malformed token
+		if resp.StatusCode == 400 {
+			errDetail += " - This usually means the extracted token is from a guest account or has expired. Please log in with a registered (non-guest) account."
+		}
+		return oauth.TokenValidationResult{Valid: false, Error: errDetail}, nil
 	}
 
 	var result struct {
@@ -153,15 +191,40 @@ func (a *GLMAdapter) ValidateToken(credentials map[string]string) (oauth.TokenVa
 			IsGuest      bool   `json:"is_guest"`
 			Nickname     string `json:"nickname"`
 			Email        string `json:"email"`
+			Phone        string `json:"phone"`
 		} `json:"result"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.NewDecoder(reader).Decode(&result); err != nil {
 		return oauth.TokenValidationResult{Valid: false, Error: err.Error()}, nil
 	}
 
-	// Guest check
-	if result.Result.IsGuest || containsStr(result.Result.Nickname, "访客") || containsStr(result.Result.Email, "@guest") {
-		return oauth.TokenValidationResult{Valid: false, Error: "Guest accounts are not allowed"}, nil
+	fmt.Println("[GLM] API response received:",
+		"userID=", result.Result.UserID,
+		"isGuest=", result.Result.IsGuest,
+		"nickname=", result.Result.Nickname,
+		"email=", result.Result.Email,
+		"phone=", result.Result.Phone,
+		"accessTokenLength=", len(result.Result.AccessToken),
+		"refreshTokenLength=", len(result.Result.RefreshToken))
+
+	// Guest check with detailed logging (100% matching chat2api logic)
+	reasons := []string{}
+	if result.Result.IsGuest {
+		reasons = append(reasons, "is_guest=true")
+	}
+	if containsStr(result.Result.Nickname, "访客") {
+		reasons = append(reasons, fmt.Sprintf("nickname contains '访客': %s", result.Result.Nickname))
+	}
+	if containsStr(result.Result.Email, "@guest") {
+		reasons = append(reasons, fmt.Sprintf("email contains '@guest': %s", result.Result.Email))
+	}
+	if result.Result.Email == "" && result.Result.Phone == "" {
+		reasons = append(reasons, "no email and no phone bound (incomplete registration)")
+	}
+
+	if len(reasons) > 0 {
+		fmt.Println("[GLM] Guest account detected:", strings.Join(reasons, ", "))
+		return oauth.TokenValidationResult{Valid: false, Error: fmt.Sprintf("Guest accounts are not allowed (%s)", strings.Join(reasons, "; "))}, nil
 	}
 
 	return oauth.TokenValidationResult{

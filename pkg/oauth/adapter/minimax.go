@@ -202,8 +202,22 @@ func (a *MiniMaxAdapter) ValidateToken(credentials map[string]string) (oauth.Tok
 		return oauth.TokenValidationResult{Valid: false, Error: err.Error()}, nil
 	}
 
+	fmt.Println("[MiniMax] API response received:",
+		"userID=", result.Data.UserInfo.UserID,
+		"nickName=", result.Data.UserInfo.NickName,
+		"statusCode=", result.StatusInfo.Code)
+
 	if result.StatusInfo.Code != 0 {
 		return oauth.TokenValidationResult{Valid: false, Error: fmt.Sprintf("API error code: %d", result.StatusInfo.Code)}, nil
+	}
+
+	if result.Data.UserInfo.UserID == "" || result.Data.UserInfo.UserID == "0" {
+		fmt.Println("[MiniMax] Guest account detected: empty or zero userID")
+		return oauth.TokenValidationResult{Valid: false, Error: "Guest accounts are not allowed (invalid userID)"}, nil
+	}
+	if oauth.IsGuestNickname(result.Data.UserInfo.NickName) {
+		fmt.Println("[MiniMax] Guest account detected: nickname indicates guest")
+		return oauth.TokenValidationResult{Valid: false, Error: "Guest accounts are not allowed (nickname indicates guest)"}, nil
 	}
 
 	return oauth.TokenValidationResult{

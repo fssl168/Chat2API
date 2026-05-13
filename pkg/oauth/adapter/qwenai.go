@@ -180,8 +180,16 @@ func (a *QwenAIAdapter) validateTokenViaAPI(token string) *oauth.TokenValidation
 	}
 
 	if result.IsGuest || oauth.IsGuestEmail(result.Email) {
+		fmt.Println("[QwenAI] Guest account detected:",
+			"isGuest=", result.IsGuest,
+			"email=", result.Email)
 		return &oauth.TokenValidationResult{Valid: false, Error: "Guest accounts are not allowed"}
 	}
+
+	fmt.Println("[QwenAI] API validation passed:",
+		"id=", result.ID,
+		"email=", result.Email,
+		"name=", result.Name)
 
 	return &oauth.TokenValidationResult{
 		Valid:     true,

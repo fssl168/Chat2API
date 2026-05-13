@@ -120,6 +120,7 @@ func (m *OAuthManager) StartLogin(options oauth.OAuthOptions) (oauth.OAuthResult
 }
 
 // StartLoginWithBrowser uses Playwright for automated login and token extraction.
+// It now uses InAppLoginManager for a refined popup login experience.
 func (m *OAuthManager) StartLoginWithBrowser(options oauth.OAuthOptions) (oauth.OAuthResult, error) {
 	if m.currentLogin != nil {
 		return oauth.OAuthResult{
@@ -140,7 +141,14 @@ func (m *OAuthManager) StartLoginWithBrowser(options oauth.OAuthOptions) (oauth.
 		}, nil
 	}
 
-	// 尝试类型断言以访问 StartLoginWithBrowser 方法
+	// Try InAppLogin first (new refined popup login)
+	if extAdpt, ok := interface{}(adpt).(interface {
+		StartInAppLogin(options oauth.OAuthOptions) (oauth.OAuthResult, error)
+	}); ok {
+		return extAdpt.StartInAppLogin(options)
+	}
+
+	// Fallback to old StartLoginWithBrowser
 	if extAdpt, ok := interface{}(adpt).(interface {
 		StartLoginWithBrowser(options oauth.OAuthOptions) (oauth.OAuthResult, error)
 	}); ok {
@@ -179,7 +187,15 @@ func (m *OAuthManager) StartLoginWithBrowserAndLogs(options oauth.OAuthOptions) 
 		}, nil, nil
 	}
 
-	// 尝试类型断言以访问 StartLoginWithBrowserAndLogs 方法
+	// Try InAppLogin first (new refined popup login)
+	if extAdpt, ok := interface{}(adpt).(interface {
+		StartInAppLogin(options oauth.OAuthOptions) (oauth.OAuthResult, error)
+	}); ok {
+		result, err := extAdpt.StartInAppLogin(options)
+		return result, nil, err
+	}
+
+	// Fallback to old StartLoginWithBrowserAndLogs
 	if extAdpt, ok := interface{}(adpt).(interface {
 		StartLoginWithBrowserAndLogs(options oauth.OAuthOptions) (oauth.OAuthResult, *oauth.FlowLogger, error)
 	}); ok {

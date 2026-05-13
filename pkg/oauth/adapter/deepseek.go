@@ -136,6 +136,20 @@ func (a *DeepSeekAdapter) ValidateToken(credentials map[string]string) (oauth.To
 		return oauth.TokenValidationResult{Valid: false, Error: err.Error()}, nil
 	}
 
+	fmt.Println("[DeepSeek] API response received:",
+		"userID=", result.Data.BizData.ID,
+		"email=", result.Data.BizData.Email,
+		"name=", result.Data.BizData.Name)
+
+	if oauth.IsGuestEmail(result.Data.BizData.Email) {
+		fmt.Println("[DeepSeek] Guest account detected: email contains @guest")
+		return oauth.TokenValidationResult{Valid: false, Error: "Guest accounts are not allowed (email indicates guest)"}, nil
+	}
+	if oauth.IsGuestNickname(result.Data.BizData.Name) {
+		fmt.Println("[DeepSeek] Guest account detected: nickname indicates guest")
+		return oauth.TokenValidationResult{Valid: false, Error: "Guest accounts are not allowed (nickname indicates guest)"}, nil
+	}
+
 	return oauth.TokenValidationResult{
 		Valid:     true,
 		TokenType: oauth.TokenTypeAccess,
