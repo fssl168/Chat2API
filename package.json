@@ -100,7 +100,15 @@
     "files": [
       "out/**/*",
       "package.json",
-      "!node_modules/**/*"
+      "node_modules/**/*",
+      "!**/*.{md,txt,ts,map}",
+      "!**/test/**",
+      "!**/tests/**",
+      "!**/example/**",
+      "!**/examples/**",
+      "!**/.git/**",
+      "!**/LICENSE*",
+      "!**/CHANGELOG*"
     ],
     "extraResources": [
       {
@@ -118,7 +126,9 @@
     "asar": true,
     "asarUnpack": [
       "**/*.node",
-      "**/node_modules/electron-updater/**/*"
+      "**/node_modules/electron-updater/**/*",
+      "node_modules/curl-cffi-node/**/*.node",
+      "node_modules/curl-cffi-node/dist/**/*"
     ],
     "fileAssociations": [
       {
