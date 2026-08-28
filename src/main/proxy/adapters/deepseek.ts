@@ -116,6 +116,19 @@ export class DeepSeekAdapter {
     console.log('[DeepSeek] Account credentials:', JSON.stringify(account.credentials, null, 2))
     this.token = account.credentials.token || account.credentials.apiKey || account.credentials.refreshToken || ''
     console.log('[DeepSeek] Using token:', this.token.substring(0, 20) + '...')
+    // curl-cffi with TLS impersonation (JA3/JA4 fingerprint maintained), axios fallback
+    try {
+      this.session = new Session({
+        impersonate: 'chrome148',
+        headers: FAKE_HEADERS,
+        timeout: 30,
+        followRedirects: true,
+      })
+      console.log('[DeepSeek] curl-cffi Session initialized (TLS impersonation active)')
+    } catch (e) {
+      console.warn('[DeepSeek] curl-cffi Session failed, falling back to axios:', e)
+      this.session = null
+    }
   }
 
   private async acquireToken(): Promise<string> {
@@ -130,14 +143,19 @@ export class DeepSeekAdapter {
 
     console.log('[DeepSeek] Acquiring token...')
     
-    const result = await axios.get(`${DEEPSEEK_API_BASE}/v0/users/current`, {
-      headers: {
-        Authorization: `Bearer ${this.token}`,
-        ...FAKE_HEADERS,
-      },
-      timeout: 15000,
-      validateStatus: () => true,
-    })
+    let result: any
+    if (this.session) {
+      const res = await this.session.get(`${DEEPSEEK_API_BASE}/v0/users/current`, {
+        headers: { Authorization: `Bearer ${this.token}` },
+      })
+      result = { status: res.status || 200, data: res.json ? res.json() : res.body ? JSON.parse(res.body.toString()) : {} }
+    } else {
+      result = await axios.get(`${DEEPSEEK_API_BASE}/v0/users/current`, {
+        headers: { Authorization: `Bearer ${this.token}`, ...FAKE_HEADERS },
+        timeout: 15000,
+        validateStatus: () => true,
+      })
+    }
 
     console.log('[DeepSeek] Token response status:', result.status)
     
@@ -176,19 +194,27 @@ export class DeepSeekAdapter {
     }
 
     const token = await this.acquireToken()
-    const result = await axios.post(
-      `${DEEPSEEK_API_BASE}/v0/chat_session/create`,
-      {},
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          ...FAKE_HEADERS,
-          Cookie: generateCookie(),
-        },
-        timeout: 15000,
-        validateStatus: () => true,
-      }
-    )
+    let result: any
+    if (this.session) {
+      const res = await this.session.post(`${DEEPSEEK_API_BASE}/v0/chat_session/create`, {}, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      result = { status: res.status || 200, data: res.json ? res.json() : res.body ? JSON.parse(res.body.toString()) : {} }
+    } else {
+      result = await axios.post(
+        `${DEEPSEEK_API_BASE}/v0/chat_session/create`,
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            ...FAKE_HEADERS,
+            Cookie: generateCookie(),
+          },
+          timeout: 15000,
+          validateStatus: () => true,
+        }
+      )
+    }
 
     console.log('[DeepSeek] Create session response:', JSON.stringify(result.data, null, 2))
 
@@ -207,7 +233,14 @@ export class DeepSeekAdapter {
   async deleteSession(sessionId: string): Promise<boolean> {
     try {
       const token = await this.acquireToken()
-      const result = await axios.post(
+      let result: any
+    if (this.session) {
+      const res = await this.session.post(`${DEEPSEEK_API_BASE}/v0/chat_session/delete`, { chat_session_id: sessionId }, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      result = { status: res.status || 200, data: res.json ? res.json() : res.body ? JSON.parse(res.body.toString()) : {} }
+    } else {
+      result = await axios.post(
         `${DEEPSEEK_API_BASE}/v0/chat_session/delete`,
         { chat_session_id: sessionId },
         {
@@ -219,6 +252,7 @@ export class DeepSeekAdapter {
           validateStatus: () => true,
         }
       )
+    }
 
       console.log('[DeepSeek] Delete session response:', JSON.stringify(result.data, null, 2))
 
@@ -238,18 +272,26 @@ export class DeepSeekAdapter {
 
   private async getChallenge(targetPath: string): Promise<ChallengeResponse> {
     const token = await this.acquireToken()
-    const result = await axios.post(
-      `${DEEPSEEK_API_BASE}/v0/chat/create_pow_challenge`,
-      { target_path: targetPath },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          ...FAKE_HEADERS,
-        },
-        timeout: 15000,
-        validateStatus: () => true,
-      }
-    )
+    let result: any
+    if (this.session) {
+      const res = await this.session.post(`${DEEPSEEK_API_BASE}/v0/chat/create_pow_challenge`, { target_path: targetPath }, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      result = { status: res.status || 200, data: res.json ? res.json() : res.body ? JSON.parse(res.body.toString()) : {} }
+    } else {
+      result = await axios.post(
+        `${DEEPSEEK_API_BASE}/v0/chat/create_pow_challenge`,
+        { target_path: targetPath },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            ...FAKE_HEADERS,
+          },
+          timeout: 15000,
+          validateStatus: () => true,
+        }
+      )
+    }
 
     // Response structure: { code: 0, data: { biz_code: 0, biz_data: { challenge: {...} } } }
     const bizData = result.data?.data?.biz_data || result.data?.biz_data
