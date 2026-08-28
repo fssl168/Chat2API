@@ -75,7 +75,7 @@ export class AgnesOAuthAdapter extends BaseOAuthAdapter {
         success: true,
         providerId: options.providerId,
         providerType: 'agnes',
-        token: 'JWT available - visit http://127.0.0.1:8787/admin/status to get full token',
+        credentials: { token: 'JWT available - visit http://127.0.0.1:8787/admin/status to get full token' },
       }
     } catch (e) {
       return {
@@ -87,9 +87,10 @@ export class AgnesOAuthAdapter extends BaseOAuthAdapter {
     }
   }
 
-  async validateToken(token: string): Promise<TokenValidationResult> {
+  async validateToken(credentials: Record<string, string>): Promise<TokenValidationResult> {
     try {
-      if (!token?.startsWith('eyJ')) {
+      const token = credentials?.token || ''
+      if (!token.startsWith('eyJ')) {
         return { valid: false, error: 'Invalid JWT format' }
       }
       return { valid: true }

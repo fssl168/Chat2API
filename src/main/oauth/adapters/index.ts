@@ -13,6 +13,7 @@ export { PerplexityAdapter } from './perplexity'
 export { QwenAdapter } from './qwen'
 export { QwenAiAdapter } from './qwen-ai'
 export { ZaiAdapter } from './zai'
+export { AgnesOAuthAdapter } from './agnes'
 import { BaseOAuthAdapter } from './base'
 import { DeepSeekAdapter } from './deepseek'
 import { GLMAdapter } from './glm'
@@ -23,6 +24,7 @@ import { PerplexityAdapter } from './perplexity'
 import { QwenAdapter } from './qwen'
 import { QwenAiAdapter } from './qwen-ai'
 import { ZaiAdapter } from './zai'
+import { AgnesOAuthAdapter } from './agnes'
 import { ProviderType, AdapterConfig } from '../types'
 
 /**
@@ -51,6 +53,8 @@ export function createAdapter(
       return new QwenAiAdapter(config)
     case 'zai':
       return new ZaiAdapter(config)
+    case 'agnes':
+      return new AgnesOAuthAdapter(config)
     default:
       throw new Error(`Unsupported provider type: ${providerType}`)
   }
