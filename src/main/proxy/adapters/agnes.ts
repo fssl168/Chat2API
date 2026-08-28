@@ -68,7 +68,7 @@ export class AgnesAdapter {
         headers: AGNES_HEADERS,
         timeout: 120,
         followRedirects: true,
-        verify: true,
+        verify: 'C:\Users\nhlogo\AppData\Local\hermes\hermes-agent\venv\Lib\site-packages\certifi\cacert.pem',  // use certifi CA bundle (curl error 60 fix)
       })
       console.log('[Agnes] curl-cffi Session initialized (TLS impersonation active)')
     } catch (e) {
