@@ -161,7 +161,12 @@ export class AgnesStreamHandler {
     }
 
     const finishReason = this.toolStreamParser?.hasEmittedToolCall() ? 'tool_calls' : 'stop'
-    transStream.write(`data: ${JSON.stringify(this.createBaseChunk())}\n\n`)
+    const finalChunk = this.createBaseChunk()
+    // Override finish_reason on the final chunk
+    if (finalChunk.choices && finalChunk.choices[0]) {
+      finalChunk.choices[0].finish_reason = finishReason
+    }
+    transStream.write(`data: ${JSON.stringify(finalChunk)}\n\n`)
     transStream.write('data: [DONE]\n\n')
     transStream.end()
     this.onEnd?.()
