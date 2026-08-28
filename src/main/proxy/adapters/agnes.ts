@@ -1,25 +1,38 @@
 /**
  * Agnes Adapter
- * Implements Agnes AI API protocol via local gateway (BFF mode)
+ * Direct connection to official Agnes BFF: https://api-agnes-code.agnes-ai.com/v1
  * JWT is read from ~/AppData/Roaming/Agnes Gateway/jwt.txt or CredMan on Windows
+ * Uses curl-cffi with TLS impersonation (JA3/JA4), axios fallback
  */
 
-import axios, { AxiosResponse } from 'axios'
+import axios from 'axios'
 import * as fs from 'fs'
 import * as path from 'path'
 import * as os from 'os'
 import { spawnSync } from 'child_process'
+import { Session } from 'curl-cffi-node'
 import { Account, Provider } from '../../store/types'
-import type { ToolCallingPlan } from '../toolCalling/types'
+import type { AxiosResponse } from 'axios'
 
-const AGNES_GATEWAY_URL = process.env.AGNES_GATEWAY_URL || 'http://127.0.0.1:8787'
+const AGNES_BFF_URL = 'https://api-agnes-code.agnes-ai.com'
 const AGNES_CONFIG_DIRS = [
   path.join(os.homedir(), 'AppData', 'Roaming', 'Agnes Gateway'),
   path.join(os.homedir(), '.agnes-gateway'),
   path.join(process.cwd(), 'data'),
 ]
 
-// JWT cache
+const AGNES_HEADERS = {
+  'Accept': 'application/json, text/event-stream',
+  'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+  'Origin': 'https://app.agnes-ai.com',
+  'Referer': 'https://app.agnes-ai.com/',
+  'Sec-Fetch-Dest': 'empty',
+  'Sec-Fetch-Mode': 'cors',
+  'Sec-Fetch-Site': 'same-site',
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+}
+
+// JWT cache (module-level, shared across adapter instances)
 let jwtCache: string | null = null
 let jwtFetchedAt = 0
 const JWT_TTL_MS = 9 * 60 * 1000 // 9 minutes
@@ -43,10 +56,24 @@ interface ChatCompletionRequest {
 export class AgnesAdapter {
   private provider: Provider
   private account: Account
+  private session: InstanceType<typeof Session> | null = null
 
   constructor(provider: Provider, account: Account) {
     this.provider = provider
     this.account = account
+    // curl-cffi with TLS impersonation (JA3/JA4), axios fallback
+    try {
+      this.session = new Session({
+        impersonate: 'chrome131',
+        headers: AGNES_HEADERS,
+        timeout: 120,
+        followRedirects: true,
+      })
+      console.log('[Agnes] curl-cffi Session initialized (TLS impersonation active)')
+    } catch (e) {
+      console.warn('[Agnes] curl-cffi Session failed, falling back to axios:', e)
+      this.session = null
+    }
   }
 
   /**
@@ -54,9 +81,7 @@ export class AgnesAdapter {
    */
   private findConfigDir(): string | null {
     for (const dir of AGNES_CONFIG_DIRS) {
-      if (fs.existsSync(dir)) {
-        return dir
-      }
+      if (fs.existsSync(dir)) return dir
     }
     return null
   }
@@ -67,7 +92,6 @@ export class AgnesAdapter {
   private readJwtFromFile(): string | null {
     const configDir = this.findConfigDir()
     if (!configDir) return null
-    
     const jwtFile = path.join(configDir, 'jwt.txt')
     try {
       const jwt = fs.readFileSync(jwtFile, 'utf8').trim()
@@ -86,7 +110,6 @@ export class AgnesAdapter {
    */
   private async readJwtFromCredMan(): Promise<string | null> {
     if (process.platform !== 'win32') return null
-    
     const script = `
 import ctypes, json
 from ctypes import wintypes, POINTER, Structure, byref
@@ -115,8 +138,8 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
       })
       if (result.status === 0) {
         const line = (result.stdout || '').split('\n')
-          .map(s => s.trim())
-          .find(s => s.startsWith('eyJ'))
+          .map((s: string) => s.trim())
+          .find((s: string) => s.startsWith('eyJ'))
         if (line) return line
       }
     } catch (e) {
@@ -130,7 +153,7 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
    */
   private async acquireToken(): Promise<string> {
     const now = Date.now()
-    
+
     // Return cached JWT if still valid
     if (jwtCache && now - jwtFetchedAt < JWT_TTL_MS) {
       console.log('[Agnes] Using cached JWT')
@@ -163,7 +186,7 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
       return jwt
     }
 
-    // Fallback: try environment variable
+    // Fallback: environment variable
     const envJwt = process.env.AGNES_DESKTOP_JWT
     if (envJwt?.startsWith('eyJ')) {
       jwtCache = envJwt
@@ -172,11 +195,11 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
       return envJwt
     }
 
-    throw new Error('JWT not found. Please ensure Agnes gateway is running and logged in.')
+    throw new Error('JWT not found. Ensure Agnes gateway has been logged in (JWT saved to jwt.txt or CredMan).')
   }
 
   /**
-   * Send chat completion request to Agnes gateway
+   * Send chat completion request directly to Agnes BFF
    */
   async chatCompletion(request: ChatCompletionRequest): Promise<{ response: AxiosResponse }> {
     const token = await this.acquireToken()
@@ -193,24 +216,46 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
       ...(request.temperature !== undefined && { temperature: request.temperature }),
     }
 
-    console.log('[Agnes] Sending request to:', AGNES_GATEWAY_URL)
+    console.log('[Agnes] Sending request to:', AGNES_BFF_URL)
 
-    const response = await axios.post(
-      `${AGNES_GATEWAY_URL}/v1/chat/completions`,
-      payload,
-      {
+    let response: any
+
+    if (this.session) {
+      // curl-cffi: TLS impersonation active
+      const res = await this.session.post(`${AGNES_BFF_URL}/v1/chat/completions`, {
+        data: payload,
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-App-Id': '1',
-          'X-Platform': '1',
+          'Accept': request.stream ? 'text/event-stream' : 'application/json',
         },
-        timeout: 120000,
-        validateStatus: () => true,
-        responseType: request.stream ? 'stream' : 'json',
+      })
+      // Wrap curl-cffi Response to axios-like interface
+      response = {
+        status: (res as any).status || 200,
+        statusText: '',
+        headers: (res as any).headers || {},
+        config: {},
+        request: {},
+        data: request.stream ? (res as any).body : (res as any).body,
       }
-    )
+    } else {
+      // axios fallback
+      response = await axios.post(
+        `${AGNES_BFF_URL}/v1/chat/completions`,
+        payload,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'Accept': request.stream ? 'text/event-stream' : 'application/json',
+          },
+          timeout: 120000,
+          validateStatus: () => true,
+          responseType: request.stream ? 'stream' : 'json',
+        }
+      )
+    }
 
     console.log('[Agnes] Response status:', response.status)
 
@@ -223,7 +268,7 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
   }
 
   static isAgnesProvider(provider: Provider): boolean {
-    return provider.id === 'agnes' || provider.apiEndpoint.includes('127.0.0.1:8787')
+    return provider.id === 'agnes' || provider.apiEndpoint.includes('agnes-ai.com')
   }
 }
 
