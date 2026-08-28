@@ -422,7 +422,7 @@ export class DeepSeekAdapter {
       .replace('deepseek-v4-flash-search', 'deepseek-chat')
       .replace('deepseek-v4-flash-search', 'deepseek-chat')
       .replace('deepseek-v4-flash', 'deepseek-chat')
-      .replace('deepseek-v4-flash-think', 'deepseek-chat')
+      .replace('deepseek-v4-flash-think', 'deepseek-r1')
       .replace('deepseek-v4-think', 'deepseek-r1')
       .replace('deepseek-v4', 'deepseek-chat')
     if (normalizedModel !== request.model) {
