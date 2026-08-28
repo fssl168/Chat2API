@@ -634,6 +634,15 @@ export class QwenAiStreamHandler {
     })
     stream.once('close', () => {
       console.log('[QwenAI] Stream closed')
+      // Ensure finish_reason='stop' is emitted when stream ends without finished signal
+      const finishChunk = {
+        id: this.responseId || this.chatId,
+        model: this.model,
+        object: 'chat.completion.chunk',
+        choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+        created: this.created,
+      }
+      transStream.write(`data: ${JSON.stringify(finishChunk)}\n\n`)
       transStream.end('data: [DONE]\n\n')
     })
 
