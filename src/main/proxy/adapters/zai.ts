@@ -481,7 +481,7 @@ export class ZaiAdapter {
       timestamp: String(timestamp),
       requestId,
       user_id: userId,
-      version: '0.0.1',
+      version: '2.1.0',
       platform: 'web',
       token,
       user_agent: ZAI_USER_AGENT,
