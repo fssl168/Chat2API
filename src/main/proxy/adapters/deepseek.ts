@@ -420,7 +420,10 @@ export class DeepSeekAdapter {
     // Normalize unknown DeepSeek model variants to supported model
     const normalizedModel = request.model
       .replace('deepseek-v4-flash-search', 'deepseek-chat')
+      .replace('deepseek-v4-flash-search', 'deepseek-chat')
       .replace('deepseek-v4-flash', 'deepseek-chat')
+      .replace('deepseek-v4-flash-think', 'deepseek-chat')
+      .replace('deepseek-v4-think', 'deepseek-r1')
       .replace('deepseek-v4', 'deepseek-chat')
     if (normalizedModel !== request.model) {
       console.log('[DeepSeek] Normalized model:', request.model, '->', normalizedModel)

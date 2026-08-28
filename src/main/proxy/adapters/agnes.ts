@@ -68,7 +68,7 @@ export class AgnesAdapter {
         headers: AGNES_HEADERS,
         timeout: 120,
         followRedirects: true,
-        verify: false,  // skip SSL verification for direct BFF connection (curl error 60 fix)
+        verify: true,
       })
       console.log('[Agnes] curl-cffi Session initialized (TLS impersonation active)')
     } catch (e) {
