@@ -1311,6 +1311,79 @@ export class RequestForwarder {
     }
   }
 
+
+  /**
+   * Agnes Dedicated Forward
+   */
+  private async forwardAgnes(
+    request: ChatCompletionRequest,
+    account: Account,
+    provider: Provider,
+    actualModel: string,
+    startTime: number
+  ): Promise<ForwardResult> {
+    try {
+      const transformed = this.transformRequestForPromptToolUse(request, provider)
+      const transformedRequest = { ...request, messages: transformed.messages, tools: transformed.tools }
+
+      const adapter = new AgnesAdapter(provider, account)
+
+      const { response } = await adapter.chatCompletion({
+        model: request.model,
+        messages: transformedRequest.messages as any,
+        stream: transformedRequest.stream,
+        temperature: transformedRequest.temperature,
+      })
+
+      const latency = Date.now() - startTime
+
+      if (response.status >= 400) {
+        let errorMessage = `HTTP ${response.status}`
+        if (response.data) {
+          if (typeof response.data === 'string') errorMessage = response.data
+          else if (response.data.message) errorMessage = response.data.message
+          else if (response.data.msg) errorMessage = response.data.msg
+          else if (response.data.error?.message) errorMessage = response.data.error.message
+        }
+        return { success: false, status: response.status, error: errorMessage, latency }
+      }
+
+      if (request.stream) {
+        if (!response.data) {
+          return { success: false, status: response.status, error: 'Empty response from provider', latency }
+        }
+        const handler = new AgnesStreamHandler(actualModel)
+        const transformedStream = await handler.handleStream(response.data)
+        return {
+          success: true,
+          status: response.status,
+          headers: this.extractHeaders(response.headers),
+          stream: transformedStream,
+          skipTransform: true,
+          latency,
+        }
+      }
+
+      const result = await new AgnesStreamHandler(actualModel).handleNonStream(response.data)
+      this.applyToolCallsToResponse(result, transformed)
+      return {
+        success: true,
+        status: response.status,
+        headers: this.extractHeaders(response.headers),
+        body: result,
+        latency,
+      }
+    } catch (error) {
+      const latency = Date.now() - startTime
+      return {
+        success: false,
+        status: (error as any)?.response?.status,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        latency,
+      }
+    }
+  }
+
   /**
    * Build URL
    */
