@@ -358,3 +358,19 @@ test('DeepSeek search responses still strip explicit search control markers', as
 
   assert.equal(response.choices[0].message.content, '搜索正文。')
 })
+
+test('DeepSeek stream throws when stream is undefined', async () => {
+  const handler = new DeepSeekStreamHandler('deepseek-v4-flash', 'session-null', undefined)
+  await assert.rejects(
+    handler.handleStream(undefined as any),
+    /handleStream: stream is undefined/
+  )
+})
+
+test('DeepSeek stream throws when stream is null', async () => {
+  const handler = new DeepSeekStreamHandler('deepseek-v4-flash', 'session-null', undefined)
+  await assert.rejects(
+    handler.handleStream(null as any),
+    /handleStream: stream is undefined/
+  )
+})

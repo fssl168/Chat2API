@@ -468,8 +468,11 @@ export class RequestForwarder {
       )
       
       if (request.stream) {
+        if (!response.data) {
+          return { success: false, status: response.status, error: 'Empty response from provider', latency }
+        }
         const transformedStream = await handler.handleStream(response.data)
-        
+
         return {
           success: true,
           status: response.status,
@@ -564,8 +567,11 @@ export class RequestForwarder {
       const handler = new GLMStreamHandler(actualModel, undefined, undefined, transformed.plan)
       
       if (request.stream) {
+        if (!response.data) {
+          return { success: false, status: response.status, error: 'Empty response from provider', latency }
+        }
         const transformedStream = await handler.handleStream(response.data)
-        
+
         // If delete session after chat is enabled, we need to handle it after stream ends
         if (shouldDeleteSession()) {
           const originalEnd = transformedStream.end.bind(transformedStream)
@@ -656,8 +662,11 @@ export class RequestForwarder {
       const handler = new KimiStreamHandler(actualModel, conversationId, !!request.reasoning_effort, transformed.plan)
       
       if (request.stream) {
+        if (!response.data) {
+          return { success: false, status: response.status, error: 'Empty response from provider', latency }
+        }
         const transformedStream = await handler.handleStream(response.data)
-        
+
         // Add delete conversation callback if needed
         if (shouldDeleteSession()) {
           const originalEnd = transformedStream.end.bind(transformedStream)
@@ -845,6 +854,9 @@ export class RequestForwarder {
       handler.setChatId(chatId)
 
       if (request.stream) {
+        if (!response.data) {
+          return { success: false, status: response.status, error: 'Empty response from provider', latency }
+        }
         const transformedStream = await handler.handleStream(response.data)
 
         if (shouldDeleteSession()) {
@@ -946,8 +958,11 @@ export class RequestForwarder {
       handler.setChatId(chatId)
       
       if (request.stream === true) {
+        if (!response.data) {
+          return { success: false, status: response.status, error: 'Empty response from provider', latency }
+        }
         const transformedStream = await handler.handleStream(response.data)
-        
+
         return {
           success: true,
           status: response.status,
@@ -1141,6 +1156,9 @@ export class RequestForwarder {
       const handler = new MimoStreamHandler(actualModel, conversationId, 'separate', transformed.plan)
 
       if (request.stream) {
+        if (!response.data) {
+          return { success: false, status: response.status, error: 'Empty response from provider', latency }
+        }
         const transformedStream = new PassThrough()
         const openAIStream = handler.handleStream(response.data)
 

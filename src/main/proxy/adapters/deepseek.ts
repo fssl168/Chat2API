@@ -7,6 +7,7 @@
  */
 
 import axios, { AxiosResponse } from 'axios'
+import { Session } from 'curl-cffi-node'
 import { getDeepSeekHash } from '../../lib/challenge'
 import type { Account, Provider } from '../../store/types'
 import { resolveDeepSeekChatOptions } from './providerModelOptions'
@@ -106,6 +107,8 @@ export class DeepSeekAdapter {
   private provider: Provider
   private account: Account
   private token: string
+  private cookies: string = ''
+  private session: Session | null = null
 
   constructor(provider: Provider, account: Account) {
     this.provider = provider

@@ -27,11 +27,16 @@ export const deepseekConfig: BuiltinProviderConfig = {
     'X-Client-Version': '2.0.0',
   },
   enabled: true,
-  description: 'DeepSeek AI assistant, supports deep thinking and web search',
-  supportedModels: ['deepseek-v4-flash', 'deepseek-v4-pro'],
+  description: 'DeepSeek AI assistant, supports deep thinking, web search, and vision',
+  supportedModels: [
+    'deepseek-v4-flash',
+    'deepseek-v4-pro',
+    'deepseek-v4-flash-vision-exp',
+  ],
   modelMappings: {
     'deepseek-v4-flash': 'deepseek-v4-flash',
     'deepseek-v4-pro': 'deepseek-v4-pro',
+    'deepseek-v4-flash-vision-exp': 'deepseek-v4-flash-vision-exp',
   },
   credentialFields: [
     {
@@ -41,6 +46,14 @@ export const deepseekConfig: BuiltinProviderConfig = {
       required: true,
       placeholder: 'Enter DeepSeek user token',
       helpText: 'Authentication token obtained from DeepSeek web version, found in browser DevTools Application -> Local Storage',
+    },
+    {
+      name: 'cookies',
+      label: 'Cookies (Optional)',
+      type: 'textarea',
+      required: false,
+      placeholder: 'Enter complete Cookie string from browser DevTools',
+      helpText: 'Contains cf_clearance, session and other WAF-related cookies (optional but recommended for anti-detection)',
     },
   ],
   tokenCheckEndpoint: '/v0/users/current',

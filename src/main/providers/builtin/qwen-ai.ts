@@ -13,7 +13,7 @@ export const qwenAiConfig: BuiltinProviderConfig = {
     source: 'web',
   },
   enabled: true,
-  description: 'Qwen AI international version (chat.qwen.ai)',
+  description: 'Qwen AI international version (chat.qwen.ai) - Powered by Qwen3.8-Max, Qwen3.7-Max, and more',
   modelsApiEndpoint: 'https://chat.qwen.ai/api/models',
   modelsApiHeaders: {
     Accept: 'application/json, text/plain, */*',
@@ -22,18 +22,22 @@ export const qwenAiConfig: BuiltinProviderConfig = {
     Version: '0.2.35',
   },
   supportedModels: [
+    'Qwen3.8-Max',
     'Qwen3.7-Max',
+    'Qwen3.7-Plus',
     'Qwen3.6-Plus',
     'Qwen3.6-35B-A3B',
     'Qwen3.6-27B',
     'Qwen3-Coder',
   ],
   modelMappings: {
+    'Qwen3.8-Max': 'qwen3.8-max',
     'Qwen3.7-Max': 'qwen3.7-max',
+    'Qwen3.7-Plus': 'qwen3.7-plus',
     'Qwen3.6-Plus': 'qwen3.6-plus',
     'Qwen3.6-35B-A3B': 'qwen3.6-35b-a3b',
     'Qwen3.6-27B': 'qwen3.6-27b',
-    'Qwen3-Coder': 'qwen3-coder-plus',
+    'Qwen3-Coder': 'qwen3-coder',
   },
   credentialFields: [
     {

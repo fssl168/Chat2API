@@ -189,6 +189,9 @@ export class DeepSeekStreamHandler {
   }
 
   async handleStream(stream: NodeJS.ReadableStream): Promise<NodeJS.ReadableStream> {
+    if (!stream) {
+      throw new Error('handleStream: stream is undefined')
+    }
     const transStream = new PassThrough()
     const isThinkingModel = this.isThinkingModel()
     const isSilentModel = this.isSilentModel()
