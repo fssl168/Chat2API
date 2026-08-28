@@ -417,6 +417,15 @@ export class DeepSeekAdapter {
   }
 
   async chatCompletion(request: ChatCompletionRequest): Promise<{ response: AxiosResponse; sessionId: string }> {
+    // Normalize unknown DeepSeek model variants to supported model
+    const normalizedModel = request.model
+      .replace('deepseek-v4-flash-search', 'deepseek-chat')
+      .replace('deepseek-v4-flash', 'deepseek-chat')
+      .replace('deepseek-v4', 'deepseek-chat')
+    if (normalizedModel !== request.model) {
+      console.log('[DeepSeek] Normalized model:', request.model, '->', normalizedModel)
+      request = { ...request, model: normalizedModel }
+    }
     const token = await this.acquireToken()
     
     const sessionId = await this.createSession()

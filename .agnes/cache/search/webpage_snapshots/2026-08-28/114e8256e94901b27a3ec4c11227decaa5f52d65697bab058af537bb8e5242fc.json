@@ -1,0 +1,20 @@
+{
+  "kind": "webpage_snapshot",
+  "url": "https://docs.z.ai/guides/overview/overview",
+  "final_url": "https://docs.z.ai/guides/overview/overview",
+  "status": 200,
+  "read_status": "blocked",
+  "content_type": "text/html; charset=utf-8",
+  "fetched_at": "2026-08-28T13:50:00.973870300+00:00",
+  "title": "Overview - Overview - Z.AI DEVELOPER DOCUMENT",
+  "description": "",
+  "site_name": "Overview - Z.AI DEVELOPER DOCUMENT",
+  "published_at": null,
+  "source_type": "documentation",
+  "text": "",
+  "quote_candidates": [],
+  "word_count": 0,
+  "truncated": false,
+  "blocked": true,
+  "source": "direct_http"
+}

@@ -1,0 +1,26 @@
+{
+  "kind": "agnes_artifact",
+  "artifact_type": "research_markdown_report",
+  "research_kind": "deep_research",
+  "mode": "deep_research",
+  "session_id": "20260828_2",
+  "title": "DeepSeek Web2API-Free 项目深度分析",
+  "local_path": "D:\\projects\\Chat2API\\.agnes\\artifacts\\research\\20260828_2\\deep_research\\20260828-2-deepseek-web2api-free.md",
+  "manifest_path": "D:\\projects\\Chat2API\\.agnes\\artifacts\\research\\20260828_2\\deep_research\\20260828-2-deepseek-web2api-free.json",
+  "repo_path": "D:\\projects\\Chat2API\\.agnes\\work\\research\\20260828_2\\deep_research\\repo",
+  "preview_uri": "ui://agnes-research/deep_research/20260828-2-deepseek-web2api-free",
+  "sources_count": 0,
+  "evidence_count": 0,
+  "conflicts_count": 0,
+  "blocked_sources_count": 0,
+  "confidence": "unknown",
+  "quality_warnings": [
+    "Deep research report has no sources in the manifest.",
+    "Deep research report has no structured evidence ledger; important claims may be hard to audit."
+  ],
+  "created_at": "2026-08-28T12:16:58.683829800+00:00",
+  "sources": [],
+  "evidence": [],
+  "conflicts": [],
+  "blocked_sources": []
+}

@@ -1,0 +1,20 @@
+{
+  "kind": "webpage_snapshot",
+  "url": "https://github.com/snake-aabb-wtf/skill-webAI2api",
+  "final_url": "https://github.com/snake-aabb-wtf/skill-webAI2api",
+  "status": 200,
+  "read_status": "blocked",
+  "content_type": "text/html; charset=utf-8",
+  "fetched_at": "2026-08-28T12:13:21.502269500+00:00",
+  "title": "GitHub - snake-aabb-wtf/skill-webAI2api: 输入任意 AI 聊天网页的 URL + Cookie，全自动逆向分析其私有 API，生成 OpenAI 兼容的代理服务器。支持流式输出、DSML 工具调用、PoW 自动求解。 · GitHub",
+  "description": "输入任意 AI 聊天网页的 URL + Cookie，全自动逆向分析其私有 API，生成 OpenAI 兼容的代理服务器。支持流式输出、DSML 工具调用、PoW 自动求解。 - snake-aabb-wtf/skill-webAI2api",
+  "site_name": "GitHub",
+  "published_at": null,
+  "source_type": "source_repo",
+  "text": "",
+  "quote_candidates": [],
+  "word_count": 0,
+  "truncated": false,
+  "blocked": true,
+  "source": "direct_http"
+}

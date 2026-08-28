@@ -1,0 +1,20 @@
+{
+  "kind": "webpage_snapshot",
+  "url": "https://github.com/snake-aabb-wtf/deepseek-web2api-free/blob/main/README.md",
+  "final_url": "https://github.com/snake-aabb-wtf/deepseek-web2api-free/blob/main/README.md",
+  "status": 200,
+  "read_status": "blocked",
+  "content_type": "text/html; charset=utf-8",
+  "fetched_at": "2026-08-28T12:13:02.203656700+00:00",
+  "title": "deepseek-web2api-free/README.md at main · snake-aabb-wtf/deepseek-web2api-free · GitHub",
+  "description": "基于 FastAPI 的 DeepSeek Chat 反向代理，将 DeepSeek 网页版的 API 转换为 OpenAI 兼容格式。   支持流式/非流式对话、专家模式、深度思考（reasoning_content）、工具调用（DSML prompt injection）。   自动处理 PoW 鉴权挑战，无需官方 API Key。 - deepseek-web2api-free/README.md at main · snake-aabb-wtf/deepseek-web2api-free",
+  "site_name": "GitHub",
+  "published_at": null,
+  "source_type": "source_repo",
+  "text": "",
+  "quote_candidates": [],
+  "word_count": 0,
+  "truncated": false,
+  "blocked": true,
+  "source": "direct_http"
+}

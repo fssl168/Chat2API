@@ -1,0 +1,20 @@
+{
+  "kind": "webpage_snapshot",
+  "url": "https://openrouter.ai/provider/z-ai",
+  "final_url": "https://openrouter.ai/provider/z-ai",
+  "status": 200,
+  "read_status": "empty",
+  "content_type": "text/html; charset=utf-8",
+  "fetched_at": "2026-08-28T13:50:09.676064700+00:00",
+  "title": "Z.ai | OpenRouter",
+  "description": "Browse models provided by Z.ai",
+  "site_name": "OpenRouter",
+  "published_at": null,
+  "source_type": "unknown",
+  "text": "",
+  "quote_candidates": [],
+  "word_count": 0,
+  "truncated": false,
+  "blocked": false,
+  "source": "direct_http"
+}

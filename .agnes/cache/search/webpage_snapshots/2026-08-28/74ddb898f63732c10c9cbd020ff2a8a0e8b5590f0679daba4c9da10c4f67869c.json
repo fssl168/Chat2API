@@ -1,0 +1,20 @@
+{
+  "kind": "webpage_snapshot",
+  "url": "https://pypi.org/project/curl_cffi/",
+  "final_url": "https://pypi.org/project/curl-cffi/",
+  "status": 200,
+  "read_status": "blocked",
+  "content_type": "text/html; charset=UTF-8",
+  "fetched_at": "2026-08-28T13:08:36.395030700+00:00",
+  "title": "curl-cffi · PyPI",
+  "description": "libcurl ffi bindings for Python, with impersonation support.",
+  "site_name": "PyPI",
+  "published_at": null,
+  "source_type": "unknown",
+  "text": "",
+  "quote_candidates": [],
+  "word_count": 0,
+  "truncated": false,
+  "blocked": true,
+  "source": "direct_http"
+}
