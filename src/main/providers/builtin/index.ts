@@ -11,6 +11,7 @@ import zaiConfig from './zai.ts'
 import type { BuiltinProviderConfig } from '../../store/types.ts'
 
 export const builtinProviders: BuiltinProviderConfig[] = [
+  agnesConfig,
   deepseekConfig,
   glmConfig,
   kimiConfig,
