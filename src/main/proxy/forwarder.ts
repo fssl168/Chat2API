@@ -12,6 +12,8 @@ import { proxyStatusManager } from './status'
 import { storeManager } from '../store/store'
 import { DeepSeekAdapter } from './adapters/deepseek'
 import { DeepSeekStreamHandler } from './adapters/deepseek-stream'
+import { AgnesAdapter } from './adapters/agnes'
+import { AgnesStreamHandler } from './adapters/agnes-stream'
 import { GLMAdapter, GLMStreamHandler } from './adapters/glm'
 import { KimiAdapter, KimiStreamHandler } from './adapters/kimi'
 import { MimoAdapter, MimoStreamHandler } from './adapters/mimo'
@@ -62,6 +64,12 @@ export class RequestForwarder {
       matches: DeepSeekAdapter.isDeepSeekProvider,
       forward: (request, account, provider, actualModel, startTime) =>
         this.forwardDeepSeek(request, account, provider, actualModel, startTime),
+    },
+    {
+      name: 'agnes',
+      matches: AgnesAdapter.isAgnesProvider,
+      forward: (request, account, provider, actualModel, startTime) =>
+        this.forwardAgnes(request, account, provider, actualModel, startTime),
     },
     {
       name: 'glm',

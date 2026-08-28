@@ -85,6 +85,19 @@ export const TOKEN_EXTRACTION_GUIDES: Record<string, TokenExtractionGuide> = {
     storageType: 'localStorage',
     placeholder: 'Paste the Token obtained from MiniMax',
   },
+  agnes: {
+    loginUrl: 'http://127.0.0.1:8787/admin',
+    steps: [
+      '1. Make sure Agnes gateway is running (http://127.0.0.1:8787)',
+      '2. Open admin page at http://127.0.0.1:8787/admin',
+      '3. JWT will be automatically fetched from CredMan/jwt.txt',
+      '4. Copy JWT from the /admin/status API response',
+    ],
+    tokenKey: 'token',
+    tokenLabel: 'JWT Token',
+    storageType: 'other',
+    placeholder: 'Paste the JWT obtained from Agnes gateway',
+  },
 }
 
 export function getGuideByProvider(providerType: string): TokenExtractionGuide | undefined {

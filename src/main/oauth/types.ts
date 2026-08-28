@@ -208,4 +208,14 @@ export const MANUAL_TOKEN_CONFIGS: Record<ProviderType, ManualTokenConfig[]> = {
       helpUrl: 'https://www.perplexity.ai',
     },
   ],
+  agnes: [
+    {
+      providerType: 'agnes',
+      tokenType: 'jwt',
+      label: 'JWT Token',
+      placeholder: 'Enter JWT token (eyJ...)',
+      description: 'Get JWT from Agnes gateway admin page (http://127.0.0.1:8787/admin) or jwt.txt file',
+      helpUrl: 'http://127.0.0.1:8787/admin',
+    },
+  ],
 }

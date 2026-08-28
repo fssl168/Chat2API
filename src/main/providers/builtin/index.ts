@@ -1,4 +1,5 @@
 import deepseekConfig from './deepseek.ts'
+import agnesConfig from './agnes.ts'
 import glmConfig from './glm.ts'
 import kimiConfig from './kimi.ts'
 import minimaxConfig from './minimax.ts'
@@ -22,6 +23,7 @@ export const builtinProviders: BuiltinProviderConfig[] = [
 ]
 
 export const builtinProviderMap: Record<string, BuiltinProviderConfig> = {
+  agnes: agnesConfig,
   deepseek: deepseekConfig,
   glm: glmConfig,
   kimi: kimiConfig,
