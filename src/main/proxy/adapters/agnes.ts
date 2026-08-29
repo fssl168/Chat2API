@@ -167,7 +167,7 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
     // Return cached JWT if still valid
     if (jwtCache && now - jwtFetchedAt < JWT_TTL_MS) {
       console.log('[Agnes] Using cached JWT')
-      logManager.log('info', '[Agnes] Using cached JWT'))
+      logManager.log('info', '[Agnes] Using cached JWT')
       return jwtCache
     }
 
@@ -177,7 +177,7 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
       jwtCache = token
       jwtFetchedAt = now
       console.log('[Agnes] Using JWT from account credentials')
-      logManager.log('info', '[Agnes] Using JWT from account credentials'))
+      logManager.log('info', '[Agnes] Using JWT from account credentials')
       return token
     }
 
@@ -195,7 +195,7 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
       jwtCache = jwt
       jwtFetchedAt = now
       console.log('[Agnes] Using JWT from CredMan')
-      logManager.log('info', '[Agnes] Using JWT from CredMan'))
+      logManager.log('info', '[Agnes] Using JWT from CredMan')
       return jwt
     }
 
@@ -205,7 +205,7 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
       jwtCache = envJwt
       jwtFetchedAt = now
       console.log('[Agnes] Using JWT from environment')
-      logManager.log('info', '[Agnes] Using JWT from environment'))
+      logManager.log('info', '[Agnes] Using JWT from environment')
       return envJwt
     }
 
