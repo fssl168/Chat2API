@@ -158,11 +158,20 @@ export class GLMAdapter {
       }
     )
 
-    console.log('[GLM] Token response:', JSON.stringify(response.data, null, 2))
+    console.log('[GLM] Token response status:', response.status)
+    console.log('[GLM] Token response headers:', JSON.stringify(response.headers, null, 2))
+    console.log('[GLM] Token response body:', JSON.stringify(response.data, null, 2))
     const { code, status, message } = response.data || {}
     const isSuccess = code === 0 || status === 0
     if (response.status !== 200 || !isSuccess) {
       const errorMsg = message || `HTTP ${response.status}`
+      console.error('[GLM] Token refresh error details:', {
+        statusCode: response.status,
+        responseData: response.data,
+        errorMessage: errorMsg,
+        refreshTokenStart: refreshToken.substring(0, 20) + '...',
+        refreshTokenLength: refreshToken.length,
+      })
       throw new Error(`Token refresh failed: ${errorMsg}`)
     }
 
