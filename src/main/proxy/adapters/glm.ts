@@ -128,7 +128,7 @@ export class GLMAdapter {
 
   private getRefreshToken(): string {
     const credentials = this.account.credentials
-    return credentials.refresh_token || credentials.token || ''
+    return credentials.chatglm_refresh_token || credentials.refresh_token || credentials.token || ''
   }
 
   private async acquireToken(): Promise<string> {
@@ -161,16 +161,24 @@ export class GLMAdapter {
     console.log('[GLM] Token response status:', response.status)
     console.log('[GLM] Token response headers:', JSON.stringify(response.headers, null, 2))
     console.log('[GLM] Token response body:', JSON.stringify(response.data, null, 2))
-    const { code, status, message } = response.data || {}
+    
+    // Check for guest account
+    const data = response.data || {}
+    if (data.result && data.result.is_guest === true) {
+      console.error('[GLM] Guest account detected! Cannot use guest tokens.')
+      throw new Error('Guest account not allowed, please login with a real account')
+    }
+    
+    const { code, status, message } = data
     const isSuccess = code === 0 || status === 0
     if (response.status !== 200 || !isSuccess) {
       const errorMsg = message || `HTTP ${response.status}`
-      console.error('[GLM] Token refresh error details:', {
+      console.error('[GLM] Token refresh failed:', {
         statusCode: response.status,
-        responseData: response.data,
-        errorMessage: errorMsg,
-        refreshTokenStart: refreshToken.substring(0, 20) + '...',
-        refreshTokenLength: refreshToken.length,
+        errorCode: code,
+        errorMessage: message,
+        fullResponse: data,
+        refreshTokenType: refreshToken?.substring(0, 50) + '...',
       })
       throw new Error(`Token refresh failed: ${errorMsg}`)
     }
