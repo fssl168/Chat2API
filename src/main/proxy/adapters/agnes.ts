@@ -13,6 +13,8 @@ import { spawnSync } from 'child_process'
 import { Session } from 'curl-cffi-node'
 import { Account, Provider } from '../../store/types'
 import type { AxiosResponse } from 'axios'
+import { logManager } from '../../logger/manager'
+import { randomUaProfile } from '../utils/uaPool'
 
 const AGNES_BFF_URL = 'https://api-agnes-code.agnes-ai.com'
 const AGNES_CONFIG_DIRS = [
@@ -20,17 +22,6 @@ const AGNES_CONFIG_DIRS = [
   path.join(os.homedir(), '.agnes-gateway'),
   path.join(process.cwd(), 'data'),
 ]
-
-const AGNES_HEADERS = {
-  'Accept': 'application/json, text/event-stream',
-  'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-  'Origin': 'https://app.agnes-ai.com',
-  'Referer': 'https://app.agnes-ai.com/',
-  'Sec-Fetch-Dest': 'empty',
-  'Sec-Fetch-Mode': 'cors',
-  'Sec-Fetch-Site': 'same-site',
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-}
 
 // JWT cache (module-level, shared across adapter instances)
 let jwtCache: string | null = null
@@ -57,22 +48,40 @@ export class AgnesAdapter {
   private provider: Provider
   private account: Account
   private session: InstanceType<typeof Session> | null = null
+  /** Per-instance randomized browser headers (UA + Sec-Ch-Ua) */
+  private readonly headers: Record<string, string>
 
   constructor(provider: Provider, account: Account) {
     this.provider = provider
     this.account = account
-    // curl-cffi with TLS impersonation (JA3/JA4), axios fallback
+    // Randomize UA per adapter instance to reduce fingerprint consistency
+    const uaProfile = randomUaProfile()
+    this.headers = {
+      'Accept': 'application/json, text/event-stream',
+      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+      'Origin': 'https://app.agnes-ai.com',
+      'Referer': 'https://app.agnes-ai.com/',
+      'Sec-Fetch-Dest': 'empty',
+      'Sec-Fetch-Mode': 'cors',
+      'Sec-Fetch-Site': 'same-site',
+      'User-Agent': uaProfile.userAgent,
+    }
+
+    // curl-cffi: secondary fallback only.
+    // Do NOT set verify:false here — curl-impersonate bundles its own CA store;
+    // verify:false only disables chain validation but NOT hostname matching,
+    // so Agnes's cert still fails with error 60. Use axios as the reliable path.
     try {
       this.session = new Session({
         impersonate: 'chrome131',
-        headers: AGNES_HEADERS,
+        headers: this.headers,
         timeout: 120,
         followRedirects: true,
-        verify: false,  // curl-cffi on Windows can't read system CA store; we use axios as primary instead (auto fallback below)
       })
-      console.log('[Agnes] curl-cffi Session initialized (TLS impersonation active)')
+      console.log('[Agnes] curl-cffi Session initialized (fallback only)')
+      logManager.log('info', '[Agnes] curl-cffi Session initialized (fallback only)'')
     } catch (e) {
-      console.warn('[Agnes] curl-cffi Session failed, falling back to axios:', e)
+      console.warn('[Agnes] curl-cffi Session failed, will use axios only:', e)
       this.session = null
     }
   }
@@ -158,6 +167,7 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
     // Return cached JWT if still valid
     if (jwtCache && now - jwtFetchedAt < JWT_TTL_MS) {
       console.log('[Agnes] Using cached JWT')
+      logManager.log('info', '[Agnes] Using cached JWT'')
       return jwtCache
     }
 
@@ -167,6 +177,7 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
       jwtCache = token
       jwtFetchedAt = now
       console.log('[Agnes] Using JWT from account credentials')
+      logManager.log('info', '[Agnes] Using JWT from account credentials'')
       return token
     }
 
@@ -184,6 +195,7 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
       jwtCache = jwt
       jwtFetchedAt = now
       console.log('[Agnes] Using JWT from CredMan')
+      logManager.log('info', '[Agnes] Using JWT from CredMan'')
       return jwt
     }
 
@@ -193,6 +205,7 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
       jwtCache = envJwt
       jwtFetchedAt = now
       console.log('[Agnes] Using JWT from environment')
+      logManager.log('info', '[Agnes] Using JWT from environment'')
       return envJwt
     }
 
@@ -218,12 +231,14 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
     }
 
     console.log('[Agnes] Sending request to:', AGNES_BFF_URL)
+    logManager.log('info', '[Agnes] Sending request to:', AGNES_BFF_URL')
 
     let response: any
     let lastError: Error | null = null
 
     // Primary: axios (reliable TLS verification with system CA store)
     console.log('[Agnes] Using axios (primary)')
+    logManager.log('info', '[Agnes] Using axios (primary)'')
     try {
       response = await axios.post(
         `${AGNES_BFF_URL}/v1/chat/completions`,
@@ -240,6 +255,7 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
         }
       )
       console.log('[Agnes] axios succeeded')
+      logManager.log('info', '[Agnes] axios succeeded'')
     } catch (e) {
       lastError = e as Error
       console.warn('[Agnes] axios failed:', lastError.message)
@@ -248,6 +264,7 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
     // Fallback/enhancement: curl-cffi (TLS impersonation / JA3 fingerprint)
     if (!response && this.session) {
       console.log('[Agnes] Falling back to curl-cffi (TLS impersonation)...')
+      logManager.log('info', '[Agnes] Falling back to curl-cffi (TLS impersonation)...'')
       try {
         const res = await this.session.post(`${AGNES_BFF_URL}/v1/chat/completions`, {
           data: payload,
@@ -276,6 +293,7 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
     }
 
     console.log('[Agnes] Response status:', response.status)
+    logManager.log('info', '[Agnes] Response status:', response.status')
 
     if (response.status === 401) {
       jwtCache = null
