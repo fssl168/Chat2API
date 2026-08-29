@@ -167,7 +167,7 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
     // Return cached JWT if still valid
     if (jwtCache && now - jwtFetchedAt < JWT_TTL_MS) {
       console.log('[Agnes] Using cached JWT')
-      logManager.log('info', '[Agnes] Using cached JWT'')
+      logManager.log('info', '[Agnes] Using cached JWT'))
       return jwtCache
     }
 
@@ -177,7 +177,7 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
       jwtCache = token
       jwtFetchedAt = now
       console.log('[Agnes] Using JWT from account credentials')
-      logManager.log('info', '[Agnes] Using JWT from account credentials'')
+      logManager.log('info', '[Agnes] Using JWT from account credentials'))
       return token
     }
 
@@ -195,7 +195,7 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
       jwtCache = jwt
       jwtFetchedAt = now
       console.log('[Agnes] Using JWT from CredMan')
-      logManager.log('info', '[Agnes] Using JWT from CredMan'')
+      logManager.log('info', '[Agnes] Using JWT from CredMan'))
       return jwt
     }
 
@@ -205,7 +205,7 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
       jwtCache = envJwt
       jwtFetchedAt = now
       console.log('[Agnes] Using JWT from environment')
-      logManager.log('info', '[Agnes] Using JWT from environment'')
+      logManager.log('info', '[Agnes] Using JWT from environment'))
       return envJwt
     }
 
@@ -238,7 +238,7 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
 
     // Primary: axios (reliable TLS verification with system CA store)
     console.log('[Agnes] Using axios (primary)')
-    logManager.log('info', '[Agnes] Using axios (primary)'')
+    logManager.log('info', '[Agnes] Using axios (primary)'))
     try {
       response = await axios.post(
         `${AGNES_BFF_URL}/v1/chat/completions`,
@@ -255,7 +255,7 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
         }
       )
       console.log('[Agnes] axios succeeded')
-      logManager.log('info', '[Agnes] axios succeeded'')
+      logManager.log('info', '[Agnes] axios succeeded'))
     } catch (e) {
       lastError = e as Error
       console.warn('[Agnes] axios failed:', lastError.message)
@@ -264,7 +264,7 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
     // Fallback/enhancement: curl-cffi (TLS impersonation / JA3 fingerprint)
     if (!response && this.session) {
       console.log('[Agnes] Falling back to curl-cffi (TLS impersonation)...')
-      logManager.log('info', '[Agnes] Falling back to curl-cffi (TLS impersonation)...'')
+      logManager.log('info', '[Agnes] Falling back to curl-cffi (TLS impersonation)...'))
       try {
         const res = await this.session.post(`${AGNES_BFF_URL}/v1/chat/completions`, {
           data: payload,
