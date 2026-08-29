@@ -7,7 +7,7 @@ import axios, { AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios'
 import http2 from 'http2'
 import { PassThrough } from 'stream'
 import { Account, Provider } from '../store/types'
-import { ForwardResult, ChatCompletionRequest, ProxyContext } from './types'
+import { ForwardResult, ChatCompletionRequest, ProxyContext, ChatMessage } from './types'
 import { proxyStatusManager } from './status'
 import { storeManager } from '../store/store'
 import { DeepSeekAdapter } from './adapters/deepseek'
@@ -21,7 +21,7 @@ import { QwenAdapter, QwenStreamHandler } from './adapters/qwen'
 import { QwenAiAdapter, QwenAiStreamHandler } from './adapters/qwen-ai'
 import { ZaiAdapter, ZaiStreamHandler } from './adapters/zai'
 import { MiniMaxAdapter, MiniMaxStreamHandler } from './adapters/minimax'
-import { PerplexityAdapter } from './adapters/perplexity'
+import { PerplexityAdapter, setPerplexityStealthFetcher } from './adapters/perplexity'
 import { PerplexityStreamHandler } from './adapters/perplexity-stream'
 import { ToolCallingEngine } from './toolCalling/ToolCallingEngine'
 import type { ToolCallingTransformResult } from './toolCalling/types'
@@ -29,8 +29,10 @@ import { sessionManager } from './sessionManager'
 import {
   createContextManagementService,
   SummaryGenerator,
-  type ChatMessage as ContextChatMessage,
 } from './services/contextManagementService'
+import { getSessionVault } from './sessionVault'
+import { getStealthEngine, type StealthBrowserEngine } from './stealthEngine'
+import { detectChallenge, ChallengeType } from './challengeDetector'
 
 function shouldDeleteSession(): boolean {
   return sessionManager.shouldDeleteAfterChat()
@@ -57,6 +59,13 @@ export class RequestForwarder {
     maxBodyLength: Infinity,
     maxContentLength: Infinity,
   })
+
+  /** Session vault for cross-request cookie/token persistence */
+  private readonly vault = getSessionVault()
+
+  /** Stealth browser engine for WAF challenge escalation */
+  private stealthEngine: StealthBrowserEngine | null = null
+  private stealthInitialized = false
 
   private readonly providerForwarders: ProviderForwarder[] = [
     {
@@ -165,7 +174,7 @@ export class RequestForwarder {
     actualModel: string,
     context: ProxyContext
   ): SummaryGenerator {
-    return async (messages: ContextChatMessage[], prompt?: string): Promise<string> => {
+    return async (messages: ChatMessage[], prompt?: string): Promise<string> => {
       try {
         console.log('[SummaryGenerator] Generating summary for', messages.length, 'messages')
 
@@ -178,8 +187,8 @@ export class RequestForwarder {
               ? msg.content
               : Array.isArray(msg.content)
                 ? msg.content
-                    .filter(part => part.type === 'text' && part.text)
-                    .map(part => part.text)
+                    .filter((part: any) => part.type === 'text' && part.text)
+                    .map((part: any) => part.text)
                     .join('\n')
                 : ''
             return `${role}: ${content}`
@@ -263,7 +272,7 @@ export class RequestForwarder {
           )
 
           const originalCount = modifiedRequest.messages.length
-          const contextMessages: ContextChatMessage[] = modifiedRequest.messages.map(msg => ({
+          const contextMessages: ChatMessage[] = modifiedRequest.messages.map(msg => ({
             role: msg.role as 'user' | 'assistant' | 'system' | 'tool',
             content: msg.content,
             timestamp: Date.now(),
@@ -356,6 +365,38 @@ export class RequestForwarder {
 
       const response: AxiosResponse = await this.axiosInstance.request(axiosConfig)
       const latency = Date.now() - startTime
+
+      // WAF Challenge Detection & Stealth Escalation (non-stream only)
+      if (!request.stream && response.status === 200 && typeof response.data === 'string') {
+        const bodyStr = response.data as string
+        const bodyLen = bodyStr.length
+        const isHtmlLike = bodyLen < 50000 && /<!doctype|<html|<head|just a moment/i.test(bodyStr)
+        if (isHtmlLike) {
+          const challenge = this.detectWafChallenge(response.status, bodyStr, response.headers as Record<string, string> ?? {})
+          if (challenge !== ChallengeType.NONE) {
+            console.warn(`[Forwarder] WAF challenge [${ChallengeType[challenge]}] detected via axios. Escalating to stealth browser...`)
+            const domain = new URL(url).hostname
+            try {
+              const stealthResult = await this.fetchViaStealth(url, domain)
+              if (stealthResult.status === 200 && !this.isWafPage(stealthResult.body)) {
+                // Successful bypass
+                this.vault.setCookies(domain, { _stealth_bypass: '1' })
+                return {
+                  success: true,
+                  status: stealthResult.status,
+                  headers: this.extractHeaders(stealthResult.headers),
+                  body: stealthResult.body,
+                  latency: Date.now() - startTime,
+                }
+              }
+              const escChallenge = this.detectWafChallenge(stealthResult.status, stealthResult.body, stealthResult.headers)
+              console.warn(`[Forwarder] Stealth also hit WAF [${escChallenge !== ChallengeType.NONE ? ChallengeType[escChallenge] : 'unknown'}]`)
+            } catch (stealthErr) {
+              console.error('[Forwarder] Stealth escalation failed:', stealthErr)
+            }
+          }
+        }
+      }
 
       if (response.status >= 400) {
         return {
@@ -540,7 +581,7 @@ export class RequestForwarder {
       const adapter = new GLMAdapter(provider, account)
       const { response, conversationId } = await adapter.chatCompletion({
         model: actualModel,
-        originalModel: request.model,
+        ...(request as any).originalModel ? { originalModel: (request as any).originalModel } : {},
         messages: transformedRequest.messages,
         stream: transformedRequest.stream,
         temperature: transformedRequest.temperature,
@@ -647,13 +688,13 @@ export class RequestForwarder {
       const adapter = new KimiAdapter(provider, account)
       const { response, conversationId } = await adapter.chatCompletion({
         model: actualModel,
-        originalModel: request.model,
+        ...(request as any).originalModel ? { originalModel: (request as any).originalModel } : {},
         messages: transformed.messages,
         stream: request.stream,
         temperature: request.temperature,
         enableThinking: !!request.reasoning_effort,
         enableWebSearch: !!request.web_search,
-      })
+      } as any)
 
       const latency = Date.now() - startTime
 
@@ -750,13 +791,13 @@ export class RequestForwarder {
       const adapter = new QwenAdapter(provider, account)
       const { response, sessionId, reqId } = await adapter.chatCompletion({
         model: actualModel,
-        originalModel: request.model,
+        ...(request as any).originalModel ? { originalModel: (request as any).originalModel } : {},
         messages: transformedRequest.messages as any,
         stream: request.stream,
         temperature: request.temperature,
         enableThinking: !!request.reasoning_effort,
         enableWebSearch: !!request.web_search,
-      })
+      } as any)
 
       const latency = Date.now() - startTime
 
@@ -839,7 +880,7 @@ export class RequestForwarder {
       const adapter = new QwenAiAdapter(provider, account)
       const { response, chatId, parentId } = await adapter.chatCompletion({
         model: actualModel,
-        originalModel: request.model,
+        ...(request as any).originalModel ? { originalModel: (request as any).originalModel } : {},
         messages: transformed.messages as any,
         stream: request.stream,
         temperature: request.temperature,
@@ -932,7 +973,7 @@ export class RequestForwarder {
       const adapter = new ZaiAdapter(provider, account)
       const { response, chatId, requestId } = await adapter.chatCompletion({
         model: actualModel,
-        originalModel: request.model,
+        ...(request as any).originalModel ? { originalModel: (request as any).originalModel } : {},
         messages: transformed.messages as any,
         stream: request.stream,
         temperature: request.temperature,
@@ -1026,11 +1067,11 @@ export class RequestForwarder {
       const adapter = new MiniMaxAdapter(provider, account)
       const { response, stream, chatId } = await adapter.chatCompletion({
         model: actualModel,
-        originalModel: request.model,
+        ...(request as any).originalModel ? { originalModel: (request as any).originalModel } : {},
         messages: transformed.messages as any,
         stream: request.stream,
         temperature: request.temperature,
-      })
+      } as any)
 
       const latency = Date.now() - startTime
 
@@ -1543,6 +1584,87 @@ export class RequestForwarder {
    */
   private delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms))
+  }
+
+  /**
+   * Detect challenge from a raw HTTP response body+headers pair.
+   * Used after dedicated forwarders return non-stream HTML responses.
+   */
+  private detectWafChallenge(status: number, body: string | null, headers: Record<string, string>): ChallengeType {
+    if (status >= 400 || !body) return ChallengeType.NONE
+    const result = detectChallenge(body, headers)
+    if (result.type !== ChallengeType.NONE) {
+      console.warn(`[Forwarder] WAF challenge detected [${ChallengeType[result.type]}] for status ${status}`)
+    }
+    return result.type
+  }
+
+  /**
+   * Check if response body looks like a WAF challenge page (not API JSON).
+   */
+  private isWafPage(body: string): boolean {
+    if (!body || body.length > 50000) return false
+    return /<!doctype|<html|<head|just a moment|checking your browser|cf-challenge|datadome|perimeterx|g-recaptcha|h-captcha/i.test(body)
+  }
+
+  /**
+   * Fetch URL via stealth browser as WAF bypass fallback.
+   * Stores new cookies to the SessionVault and extracts any auth tokens.
+   */
+  private async fetchViaStealth(url: string, domain: string): Promise<{ status: number; body: string; headers: Record<string, string> }> {
+    await this.ensureStealthEngine()
+    if (!this.stealthEngine) {
+      throw new Error('Stealth browser engine unavailable')
+    }
+    const result = await this.stealthEngine.fetch(url)
+    return {
+      status: result.status,
+      body: result.html,
+      headers: result.headers,
+    }
+  }
+
+  /**
+   * Lazily initialize the stealth browser engine.
+   * Safe to call concurrently — only initializes once.
+   */
+  private async ensureStealthEngine(): Promise<void> {
+    if (this.stealthInitialized) return
+    // Only initialize if globally enabled in config
+    const config = storeManager.getConfig()
+    if (!config.enableStealth) {
+      console.log('[Forwarder] Stealth engine disabled in config')
+      return
+    }
+    this.stealthInitialized = true
+    try {
+      console.log('[Forwarder] Initializing stealth browser engine...')
+      await this.vault.init()
+      const engine = getStealthEngine()
+      await engine.initialize()
+      this.stealthEngine = engine
+      // Register fetcher so Perplexity adapter can use it for 403 fallback
+      setPerplexityStealthFetcher(async (url: string, domain: string) => {
+        const result = await engine.fetch(url)
+        return { status: result.status, body: result.html, headers: result.headers }
+      })
+      console.log('[Forwarder] Stealth engine ready')
+    } catch (err) {
+      console.error('[Forwarder] Failed to init stealth engine:', err)
+      this.stealthInitialized = false // allow retry next time
+      throw err
+    }
+  }
+
+  /**
+   * Gracefully shut down the stealth engine on proxy stop.
+   */
+  async shutdownStealthEngine(): Promise<void> {
+    if (this.stealthEngine) {
+      console.log('[Forwarder] Shutting down stealth engine...')
+      await this.stealthEngine.close()
+      this.stealthEngine = null
+    }
   }
 
   /**
