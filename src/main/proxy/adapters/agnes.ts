@@ -231,14 +231,14 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
     }
 
     console.log('[Agnes] Sending request to:', AGNES_BFF_URL)
-    logManager.log('info', '[Agnes] Sending request to:', AGNES_BFF_URL')
+    logManager.log('info', '[Agnes] Sending request to: ' + AGNES_BFF_URL)
 
     let response: any
     let lastError: Error | null = null
 
     // Primary: axios (reliable TLS verification with system CA store)
     console.log('[Agnes] Using axios (primary)')
-    logManager.log('info', '[Agnes] Using axios (primary)'))
+    logManager.log('info', '[Agnes] Using axios (primary)')
     try {
       response = await axios.post(
         `${AGNES_BFF_URL}/v1/chat/completions`,
@@ -255,7 +255,7 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
         }
       )
       console.log('[Agnes] axios succeeded')
-      logManager.log('info', '[Agnes] axios succeeded'))
+      logManager.log('info', '[Agnes] axios succeeded')
     } catch (e) {
       lastError = e as Error
       console.warn('[Agnes] axios failed:', lastError.message)
@@ -264,7 +264,7 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
     // Fallback/enhancement: curl-cffi (TLS impersonation / JA3 fingerprint)
     if (!response && this.session) {
       console.log('[Agnes] Falling back to curl-cffi (TLS impersonation)...')
-      logManager.log('info', '[Agnes] Falling back to curl-cffi (TLS impersonation)...'))
+      logManager.log('info', '[Agnes] Falling back to curl-cffi (TLS impersonation)...')
       try {
         const res = await this.session.post(`${AGNES_BFF_URL}/v1/chat/completions`, {
           data: payload,
@@ -293,7 +293,7 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
     }
 
     console.log('[Agnes] Response status:', response.status)
-    logManager.log('info', '[Agnes] Response status:', response.status')
+    logManager.log('info', '[Agnes] Response status: ' + response.status)
 
     if (response.status === 401) {
       jwtCache = null
