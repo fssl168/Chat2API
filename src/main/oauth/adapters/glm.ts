@@ -14,9 +14,11 @@ import {
   AdapterConfig,
   OAuthCallbackData,
 } from '../types'
+import { randomUaProfile } from '../../proxy/utils/uaPool'
 
 const GLM_API_BASE = 'https://chatglm.cn'
 
+// UA randomized per-request via randomUaProfile()
 const FAKE_HEADERS = {
   Accept: 'text/event-stream',
   'Accept-Encoding': 'gzip, deflate, br, zstd',
@@ -27,9 +29,6 @@ const FAKE_HEADERS = {
   Origin: GLM_API_BASE,
   Pragma: 'no-cache',
   Priority: 'u=1, i',
-  'Sec-Ch-Ua': '"Microsoft Edge";v="143", "Chromium";v="143", "Not A(Brand";v="24"',
-  'Sec-Ch-Ua-Mobile': '?0',
-  'Sec-Ch-Ua-Platform': '"Windows"',
   'Sec-Fetch-Dest': 'empty',
   'Sec-Fetch-Mode': 'cors',
   'Sec-Fetch-Site': 'same-origin',
@@ -39,9 +38,22 @@ const FAKE_HEADERS = {
   'X-Device-Brand': '',
   'X-Device-Model': '',
   'X-Lang': 'zh',
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
 }
 
+
+
+
+function buildGlmOauthHeaders(extra?: Record<string, string>): Record<string, string> {
+  const { userAgent, secChUa, secChUaPlatform } = randomUaProfile()
+  return {
+    ...buildGlmOauthHeaders(),
+    'Sec-Ch-Ua': secChUa,
+    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Platform': secChUaPlatform,
+    'User-Agent': userAgent,
+    ...(extra || {}),
+  }
+}
 const SIGN_SECRET = '8a1317a7468aa3ad86e997d08f3f31cb'
 
 export class GLMAdapter extends BaseOAuthAdapter {
@@ -177,7 +189,7 @@ export class GLMAdapter extends BaseOAuthAdapter {
       const deviceId = this.generateUUID().replace(/-/g, '')
       
       const response = await axios.post(
-        `${GLM_API_BASE}/chatglm/user-api/user/refresh`,
+        `${GLM_API_BASE}/user-api/user/refresh`,
         {},
         {
           headers: {
@@ -187,7 +199,7 @@ export class GLMAdapter extends BaseOAuthAdapter {
             'X-Request-Id': this.generateUUID().replace(/-/g, ''),
             'X-Sign': sign.sign,
             'X-Timestamp': sign.timestamp,
-            ...FAKE_HEADERS,
+            ...buildGlmOauthHeaders(),
           },
           timeout: 15000,
           validateStatus: () => true,
@@ -306,7 +318,7 @@ export class GLMAdapter extends BaseOAuthAdapter {
       const deviceId = this.generateUUID().replace(/-/g, '')
       
       const response = await axios.post(
-        `${GLM_API_BASE}/chatglm/user-api/user/refresh`,
+        `${GLM_API_BASE}/user-api/user/refresh`,
         {},
         {
           headers: {
@@ -316,7 +328,7 @@ export class GLMAdapter extends BaseOAuthAdapter {
             'X-Request-Id': this.generateUUID().replace(/-/g, ''),
             'X-Sign': sign.sign,
             'X-Timestamp': sign.timestamp,
-            ...FAKE_HEADERS,
+            ...buildGlmOauthHeaders(),
           },
           timeout: 15000,
           validateStatus: () => true,
@@ -356,7 +368,7 @@ export class GLMAdapter extends BaseOAuthAdapter {
           'X-Sign': sign.sign,
           'X-Timestamp': sign.timestamp,
           'X-Nonce': sign.nonce,
-          ...FAKE_HEADERS,
+          ...buildGlmOauthHeaders(),
         },
         timeout: 15000,
         validateStatus: () => true,

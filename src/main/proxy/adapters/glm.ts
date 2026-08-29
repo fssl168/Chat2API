@@ -28,6 +28,8 @@ const GLM_STATIC_HEADERS = {
   'Accept-Encoding': 'gzip, deflate, br, zstd',
   'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
   'App-Name': 'chatglm',
+  'App-Platform': 'pc',
+  'App-Version': '2.1.0',
   'Cache-Control': 'no-cache',
   'Content-Type': 'application/json',
   Origin: 'https://chatglm.cn',
@@ -36,6 +38,12 @@ const GLM_STATIC_HEADERS = {
   'Sec-Fetch-Dest': 'empty',
   'Sec-Fetch-Mode': 'cors',
   'Sec-Fetch-Site': 'same-origin',
+  'X-App-Fr': 'browser_extension',
+  'X-App-Platform': 'pc',
+  'X-App-Version': '2.1.0',
+  'X-Device-Brand': '',
+  'X-Device-Model': '',
+  'X-Lang': 'zh',
 }
 
 function buildGlmHeaders(extra?: Record<string, string>): Record<string, string> {
