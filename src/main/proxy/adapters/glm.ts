@@ -13,6 +13,7 @@ import FormData from 'form-data'
 import mime from 'mime-types'
 import path from 'path'
 import { toolsToSystemPrompt, TOOL_WRAP_HINT, hasToolPromptInjected } from '../utils/tools'
+import { randomUaProfile } from '../utils/uaPool'
 import { parseToolCallsFromText } from '../utils/toolParser'
 import { 
   createBaseChunk,
@@ -21,13 +22,8 @@ import { getProviderToolProfile } from '../toolCalling/providerProfiles'
 import { ToolStreamParser } from '../toolCalling/ToolStreamParser'
 import type { ToolCallingPlan } from '../toolCalling/types'
 
-const GLM_API_BASE = 'https://chatglm.cn/chatglm'
-const DEFAULT_ASSISTANT_ID = '65940acff94777010aa6b796'
-const SIGN_SECRET = '8a1317a7468aa3ad86e997d08f3f31cb'
-const ACCESS_TOKEN_EXPIRES = 3600
-const FILE_MAX_SIZE = 100 * 1024 * 1024 // 100MB
-
-const FAKE_HEADERS = {
+// Static headers shared across all requests
+const GLM_STATIC_HEADERS = {
   Accept: 'text/event-stream',
   'Accept-Encoding': 'gzip, deflate, br, zstd',
   'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
@@ -37,20 +33,28 @@ const FAKE_HEADERS = {
   Origin: 'https://chatglm.cn',
   Pragma: 'no-cache',
   Priority: 'u=1, i',
-  'Sec-Ch-Ua': '"Microsoft Edge";v="143", "Chromium";v="143", "Not A(Brand";v="24"',
-  'Sec-Ch-Ua-Mobile': '?0',
-  'Sec-Ch-Ua-Platform': '"Windows"',
   'Sec-Fetch-Dest': 'empty',
   'Sec-Fetch-Mode': 'cors',
   'Sec-Fetch-Site': 'same-origin',
-  'X-App-Fr': 'browser_extension',
-  'X-App-Platform': 'pc',
-  'X-App-Version': '0.0.1',
-  'X-Device-Brand': '',
-  'X-Device-Model': '',
-  'X-Lang': 'zh',
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0',
 }
+
+function buildGlmHeaders(extra?: Record<string, string>): Record<string, string> {
+  const { userAgent, secChUa, secChUaPlatform } = randomUaProfile()
+  return {
+    ...GLM_STATIC_HEADERS,
+    'Sec-Ch-Ua': secChUa,
+    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Platform': secChUaPlatform,
+    'User-Agent': userAgent,
+    ...(extra || {}),
+  }
+}
+
+const GLM_API_BASE = 'https://chatglm.cn/chatglm'
+const DEFAULT_ASSISTANT_ID = '65940acff94777010aa6b796'
+const SIGN_SECRET = '8a1317a7468aa3ad86e997d08f3f31cb'
+const ACCESS_TOKEN_EXPIRES = 3600
+const FILE_MAX_SIZE = 100 * 1024 * 1024 // 100MB
 
 interface TokenInfo {
   accessToken: string
@@ -134,7 +138,7 @@ export class GLMAdapter {
       {
         headers: {
           Authorization: `Bearer ${refreshToken}`,
-          ...FAKE_HEADERS,
+          ...buildGlmHeaders(),
           'X-Device-Id': uuid(),
           'X-Nonce': sign.nonce,
           'X-Request-Id': uuid(),
@@ -238,7 +242,7 @@ export class GLMAdapter {
         headers: {
           Authorization: `Bearer ${token}`,
           Referer: 'https://chatglm.cn/',
-          ...FAKE_HEADERS,
+          ...buildGlmHeaders(),
           ...formData.getHeaders(),
         },
         maxBodyLength: FILE_MAX_SIZE,
@@ -554,7 +558,7 @@ GLM STRICT RULES:
       {
         headers: {
           Authorization: `Bearer ${token}`,
-          ...FAKE_HEADERS,
+          ...buildGlmHeaders(),
           'X-Device-Id': uuid(),
           'X-Request-Id': uuid(),
           'X-Sign': sign.sign,
@@ -589,7 +593,7 @@ GLM STRICT RULES:
             'X-Sign': sign.sign,
             'X-Timestamp': sign.timestamp,
             'X-Nonce': sign.nonce,
-            ...FAKE_HEADERS,
+            ...buildGlmHeaders(),
           },
           timeout: 15000,
           validateStatus: () => true,
@@ -626,7 +630,7 @@ GLM STRICT RULES:
               'X-Sign': sign.sign,
               'X-Timestamp': sign.timestamp,
               'X-Nonce': sign.nonce,
-              ...FAKE_HEADERS,
+              ...buildGlmHeaders(),
             },
             timeout: 30000,
             validateStatus: () => true,
@@ -675,7 +679,7 @@ GLM STRICT RULES:
             'X-Sign': sign.sign,
             'X-Timestamp': sign.timestamp,
             'X-Nonce': sign.nonce,
-            ...FAKE_HEADERS,
+            ...buildGlmHeaders(),
           },
           timeout: 60000,
           validateStatus: () => true,
