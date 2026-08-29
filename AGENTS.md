@@ -62,13 +62,16 @@ src/
 ## Key Concepts
 
 ### Provider Adapters
+
 Each AI provider has a dedicated adapter in `src/main/proxy/adapters/` that handles:
+
 - Message format conversion (OpenAI format → provider-specific format)
 - Authentication header construction
 - Stream response parsing
 - Multi-turn conversation context
 
 To add a new provider:
+
 1. Create config in `src/main/providers/builtin/<provider>.ts`
 2. Create OAuth adapter in `src/main/oauth/adapters/<provider>.ts`
 3. Create proxy adapter in `src/main/proxy/adapters/<provider>.ts`
@@ -76,17 +79,22 @@ To add a new provider:
 5. Register in `src/main/providers/builtin/index.ts` and `src/main/proxy/adapters/index.ts`
 
 ### IPC Communication
+
 All main-renderer communication uses IPC channels defined in `src/main/ipc/channels.ts`. The naming convention is `domain:action` (e.g., `proxy:start`, `accounts:add`).
 
 ### Session Management
+
 Multi-turn conversations are managed by `sessionManager.ts`:
+
 - `single` mode: Session deleted after each chat
 - `multi` mode: Session persists with parent message IDs for context
 
 ### Tool Prompt Injection
+
 For models without native function calling, prompts are injected via `promptInjectionService.ts`. This enables function calling compatibility with clients like Cherry Studio and Kilo Code.
 
 ### Session Management Flow
+
 1. Client sends request with `sessionId`
 2. `sessionManager.ts` retrieves session or creates new one
 3. For `multi` mode: parentMessageId is used to fetch conversation history
@@ -96,6 +104,7 @@ For models without native function calling, prompts are injected via `promptInje
 ## Data Storage
 
 Application data is stored in `~/.chat2api/`:
+
 - `config.json` - Application configuration
 - `providers.json` - Provider settings
 - `accounts.json` - Account credentials (encrypted)
@@ -103,31 +112,36 @@ Application data is stored in `~/.chat2api/`:
 
 ## Tech Stack
 
-| Component | Technology |
-|-----------|------------|
-| Framework | Electron 33+ |
-| Frontend | React 18 + TypeScript |
-| Styling | Tailwind CSS |
-| State | Zustand |
-| Build | Vite + electron-vite |
-| Server | Koa |
+| Component | Technology            |
+| --------- | --------------------- |
+| Framework | Electron 33+          |
+| Frontend  | React 18 + TypeScript |
+| Styling   | Tailwind CSS          |
+| State     | Zustand               |
+| Build     | Vite + electron-vite  |
+| Server    | Koa                   |
 
 ## Coding Guidelines
 
 ### Immutability (CRITICAL)
+
 ALWAYS create new objects, NEVER mutate existing ones. Use `update` functions that return new copies.
 
 ### Error Handling
+
 Handle errors comprehensively:
+
 - Validate all user input before processing
 - Provide user-friendly error messages in UI-facing code
 - Log detailed error context on the server side
 - Never silently swallow errors
 
 ### Input Validation
+
 Validate at system boundaries (user input, external APIs). Use schema-based validation where available.
 
 ### Security
+
 - Validate all API keys before use
 - Sanitize all user inputs
 - Never trust external data (API responses, user input, file content)
@@ -136,9 +150,11 @@ Validate at system boundaries (user input, external APIs). Use schema-based vali
 ## macOS Development Note
 
 A workaround is applied for V8 JIT compiler crash on macOS ARM64 (Electron 33 bug):
+
 ```typescript
 app.commandLine.appendSwitch('js-flags', '--jitless --no-opt')
 ```
+
 This trades some performance for stability.
 
 ## Adding a New Provider
@@ -151,37 +167,37 @@ Adding a new provider requires modifications across 4 layers: Provider Config, O
 
 #### 1. Provider Config Layer (Required)
 
-| File | Purpose |
-|------|---------|
-| `src/main/providers/builtin/<provider>.ts` | Provider configuration definition |
-| `src/main/providers/builtin/index.ts` | Register provider in `builtinProviders` array |
-| `src/main/store/types.ts` | Sync to `BUILTIN_PROVIDERS` array |
+| File                                       | Purpose                                       |
+| ------------------------------------------ | --------------------------------------------- |
+| `src/main/providers/builtin/<provider>.ts` | Provider configuration definition             |
+| `src/main/providers/builtin/index.ts`      | Register provider in `builtinProviders` array |
+| `src/main/store/types.ts`                  | Sync to `BUILTIN_PROVIDERS` array             |
 
 #### 2. OAuth Authentication Layer (Required)
 
-| File | Purpose |
-|------|---------|
-| `src/main/oauth/adapters/<provider>.ts` | OAuth adapter implementation |
-| `src/main/oauth/adapters/index.ts` | Register in `createAdapter()` and `getSupportedAuthMethods()` |
-| `src/main/oauth/types.ts` | Add to `MANUAL_TOKEN_CONFIGS` (optional) |
+| File                                    | Purpose                                                       |
+| --------------------------------------- | ------------------------------------------------------------- |
+| `src/main/oauth/adapters/<provider>.ts` | OAuth adapter implementation                                  |
+| `src/main/oauth/adapters/index.ts`      | Register in `createAdapter()` and `getSupportedAuthMethods()` |
+| `src/main/oauth/types.ts`               | Add to `MANUAL_TOKEN_CONFIGS` (optional)                      |
 
 #### 3. Proxy Adapter Layer (Required)
 
-| File | Purpose |
-|------|---------|
-| `src/main/proxy/adapters/<provider>.ts` | Proxy adapter implementation |
-| `src/main/proxy/adapters/<provider>-stream.ts` | Stream handler implementation |
-| `src/main/proxy/adapters/index.ts` | Export adapter |
-| `src/main/proxy/forwarder.ts` | Add `forward<Provider>()` method |
+| File                                           | Purpose                          |
+| ---------------------------------------------- | -------------------------------- |
+| `src/main/proxy/adapters/<provider>.ts`        | Proxy adapter implementation     |
+| `src/main/proxy/adapters/<provider>-stream.ts` | Stream handler implementation    |
+| `src/main/proxy/adapters/index.ts`             | Export adapter                   |
+| `src/main/proxy/forwarder.ts`                  | Add `forward<Provider>()` method |
 
 #### 4. UI Layer (Required)
 
-| File | Purpose |
-|------|---------|
-| `src/renderer/src/i18n/locales/zh-CN.json` | Chinese translations |
-| `src/renderer/src/i18n/locales/en-US.json` | English translations |
-| `src/renderer/src/components/providers/ProviderCard.tsx` | Add icon mapping |
-| `src/assets/providers/<provider>.svg` | Provider icon file |
+| File                                                     | Purpose              |
+| -------------------------------------------------------- | -------------------- |
+| `src/renderer/src/i18n/locales/zh-CN.json`               | Chinese translations |
+| `src/renderer/src/i18n/locales/en-US.json`               | English translations |
+| `src/renderer/src/components/providers/ProviderCard.tsx` | Add icon mapping     |
+| `src/assets/providers/<provider>.svg`                    | Provider icon file   |
 
 ### Step-by-Step Implementation
 
@@ -517,20 +533,21 @@ const providerIcons: Record<string, string> = {
 
 ### AuthType Reference
 
-| Type | Description | Providers | Credential Field |
-|------|-------------|-----------|------------------|
-| `userToken` | User Token | DeepSeek | `token` |
-| `jwt` | JWT Token | Kimi, MiniMax, Qwen AI, Z.ai | `token` |
-| `refresh_token` | Refresh Token | GLM | `refresh_token` |
-| `cookie` | Cookie Auth | Perplexity | `sessionToken` |
-| `tongyi_sso_ticket` | SSO Ticket | Qwen | `ticket` |
-| `token` | Generic Token | Z.ai | `token` |
+| Type                | Description   | Providers                           | Credential Field |
+| ------------------- | ------------- | ----------------------------------- | ---------------- |
+| `userToken`         | User Token    | DeepSeek                            | `token`          |
+| `jwt`               | JWT Token     | Kimi, MiniMax, Qwen AI, Z.ai, Agnes | `token`          |
+| `refresh_token`     | Refresh Token | GLM                                 | `refresh_token`  |
+| `cookie`            | Cookie Auth   | Perplexity                          | `sessionToken`   |
+| `tongyi_sso_ticket` | SSO Ticket    | Qwen                                | `ticket`         |
+| `token`             | Generic Token | Z.ai                                | `token`          |
 
 ### Web Search Mode Implementation
 
 Three ways to enable web search:
 
 1. **Model Mapping**: Auto-enable via model name
+
 ```typescript
 const modelLower = request.model.toLowerCase()
 if (modelLower.includes('search')) {
@@ -538,14 +555,16 @@ if (modelLower.includes('search')) {
 }
 ```
 
-2. **Custom Parameter**: Via `web_search` parameter
+1. **Custom Parameter**: Via `web_search` parameter
+
 ```typescript
 if (request.web_search) {
   searchEnabled = true
 }
 ```
 
-3. **Custom Header**: Via request header
+1. **Custom Header**: Via request header
+
 ```typescript
 if (headers['X-Enable-Search']) {
   searchEnabled = true
@@ -557,6 +576,7 @@ if (headers['X-Enable-Search']) {
 Three ways to enable thinking mode:
 
 1. **Model Mapping**: Auto-enable via model name
+
 ```typescript
 const modelLower = request.model.toLowerCase()
 if (modelLower.includes('r1') || modelLower.includes('think')) {
@@ -564,14 +584,16 @@ if (modelLower.includes('r1') || modelLower.includes('think')) {
 }
 ```
 
-2. **Custom Parameter**: Via `reasoning_effort` parameter
+1. **Custom Parameter**: Via `reasoning_effort` parameter
+
 ```typescript
 if (request.reasoning_effort) {
   thinkingEnabled = true
 }
 ```
 
-3. **Custom Header**: Via request header
+1. **Custom Header**: Via request header
+
 ```typescript
 if (headers['X-Enable-Thinking']) {
   thinkingEnabled = true
@@ -622,6 +644,7 @@ When updating provider configuration (e.g., model list, description, help text),
 The `initializeDefaultProviders()` method in `store.ts` syncs configuration from `BUILTIN_PROVIDERS` to persistent storage on app startup. If only one location is updated, the changes will not be reflected in the UI.
 
 Example: When updating Z.ai model list:
+
 ```typescript
 // 1. src/main/providers/builtin/zai.ts
 supportedModels: ['GLM-5-Turbo', 'GLM-5', 'GLM-4.7', ...]
@@ -631,3 +654,19 @@ supportedModels: ['GLM-5-Turbo', 'GLM-5', 'GLM-4.7', ...]
 ```
 
 **Important**: Users must restart the app after configuration updates to see the changes.
+
+## 供应商文件映射规则（必须遵守）
+
+| 供应商 | Proxy Adapter | OAuth Adapter | Builtin Config | Stream Handler |
+|--------|---------------|---------------|----------------|----------------|
+| z.ai（智谱国际版） | `src/main/proxy/adapters/zai.ts` | `src/main/oauth/adapters/zai.ts` | `src/main/providers/builtin/zai.ts` | `src/main/proxy/adapters/zai-stream.ts` |
+| GLM（智谱清言国内版） | `src/main/proxy/adapters/glm.ts` | `src/main/oauth/adapters/glm.ts` | `src/main/providers/builtin/glm.ts` | （无独立stream文件） |
+| Qwen AI（通义国际版） | `src/main/proxy/adapters/qwen-ai.ts` | `src/main/oauth/adapters/qwen-ai.ts` | `src/main/providers/builtin/qwen-ai.ts` | `src/main/proxy/adapters/qwen-ai-stream.ts` |
+| Qwen（通义国内版） | `src/main/proxy/adapters/qwen.ts` | `src/main/oauth/adapters/qwen.ts` | `src/main/providers/builtin/qwen.ts` | `src/main/proxy/adapters/qwen-stream.ts` |
+| DeepSeek | `src/main/proxy/adapters/deepseek.ts` | `src/main/oauth/adapters/deepseek.ts` | `src/main/providers/builtin/deepseek.ts` | `src/main/proxy/adapters/deepseek-stream.ts` |
+| Agnes | `src/main/proxy/adapters/agnes.ts` | `src/main/oauth/adapters/agnes.ts` | `src/main/providers/builtin/agnes.ts` | `src/main/proxy/adapters/agnes-stream.ts` |
+
+**重要区分**：
+- `zai.ts` ≠ `glm.ts`：z.ai 是智谱国际版（chat.z.ai），GLM 是国内版（chatglm.cn），两者 API 完全不同
+- `qwen-ai.ts` ≠ `qwen.ts`：Qwen AI 是国际版（qianwen.ai），Qwen 是国内版（tongyi.aliyun.com），两者 API 不同
+- 修改某供应商时，必须同时检查 proxy adapter、OAuth adapter、builtin config 三处文件
