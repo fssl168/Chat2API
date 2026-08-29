@@ -79,7 +79,7 @@ export class AgnesAdapter {
         followRedirects: true,
       })
       console.log('[Agnes] curl-cffi Session initialized (fallback only)')
-      logManager.log('info', '[Agnes] curl-cffi Session initialized (fallback only)'')
+      logManager.log('info', '[Agnes] curl-cffi Session initialized (fallback only)')
     } catch (e) {
       console.warn('[Agnes] curl-cffi Session failed, will use axios only:', e)
       this.session = null
