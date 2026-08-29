@@ -547,7 +547,13 @@ GLM STRICT RULES:
       assistantId = request.model
     }
 
-    console.log('[GLM] Sending chat request...')
+    console.log('[GLM] Sending chat request:')
+    console.log('  - URL:', `${GLM_API_BASE}/backend-api/assistant/stream`)
+    console.log('  - Model:', request.model)
+    console.log('  - Assistant ID:', assistantId)
+    console.log('  - Chat mode:', chatMode)
+    console.log('  - Access token (first 20):', token?.substring(0, 20) + '...')
+    console.log('  - Messages count:', preparedMessages.length)
     
     const response = await axios.post(
       `${GLM_API_BASE}/backend-api/assistant/stream`,
@@ -588,6 +594,8 @@ GLM STRICT RULES:
       }
     )
 
+    console.log('[GLM] Chat response status:', response.status)
+    console.log('[GLM] Chat response headers:', JSON.stringify(response.headers, null, 2))
     return { response, conversationId: '' }
   }
 
