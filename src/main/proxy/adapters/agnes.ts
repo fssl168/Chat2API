@@ -68,7 +68,7 @@ export class AgnesAdapter {
         headers: AGNES_HEADERS,
         timeout: 120,
         followRedirects: true,
-        verify: false,  // skip SSL verification (curl error 60 fix)
+        verify: false,  // curl-cffi on Windows can't read system CA store; we use axios as primary instead (auto fallback below)
       })
       console.log('[Agnes] curl-cffi Session initialized (TLS impersonation active)')
     } catch (e) {
@@ -220,28 +220,11 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
     console.log('[Agnes] Sending request to:', AGNES_BFF_URL)
 
     let response: any
+    let lastError: Error | null = null
 
-    if (this.session) {
-      // curl-cffi: TLS impersonation active
-      const res = await this.session.post(`${AGNES_BFF_URL}/v1/chat/completions`, {
-        data: payload,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'Accept': request.stream ? 'text/event-stream' : 'application/json',
-        },
-      })
-      // Wrap curl-cffi Response to axios-like interface
-      response = {
-        status: (res as any).status || 200,
-        statusText: '',
-        headers: (res as any).headers || {},
-        config: {},
-        request: {},
-        data: request.stream ? (res as any).body : (res as any).body,
-      }
-    } else {
-      // axios fallback
+    // Primary: axios (reliable TLS verification with system CA store)
+    console.log('[Agnes] Using axios (primary)')
+    try {
       response = await axios.post(
         `${AGNES_BFF_URL}/v1/chat/completions`,
         payload,
@@ -256,12 +239,46 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
           responseType: request.stream ? 'stream' : 'json',
         }
       )
+      console.log('[Agnes] axios succeeded')
+    } catch (e) {
+      lastError = e as Error
+      console.warn('[Agnes] axios failed:', lastError.message)
+    }
+
+    // Fallback/enhancement: curl-cffi (TLS impersonation / JA3 fingerprint)
+    if (!response && this.session) {
+      console.log('[Agnes] Falling back to curl-cffi (TLS impersonation)...')
+      try {
+        const res = await this.session.post(`${AGNES_BFF_URL}/v1/chat/completions`, {
+          data: payload,
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'Accept': request.stream ? 'text/event-stream' : 'application/json',
+          },
+        })
+        response = {
+          status: (res as any).status || 200,
+          statusText: '',
+          headers: (res as any).headers || {},
+          config: {},
+          request: {},
+          data: request.stream ? (res as any).body : (res as any).body,
+        }
+        console.log('[Agnes] curl-cffi fallback succeeded')
+      } catch (e) {
+        console.warn('[Agnes] curl-cffi fallback also failed:', (e as Error).message)
+      }
+    }
+
+    if (!response) {
+      throw new Error(`All requests failed. Last error: ${lastError?.message || 'Unknown error'}`)
     }
 
     console.log('[Agnes] Response status:', response.status)
 
     if (response.status === 401) {
-      jwtCache = null // Clear cache on auth error
+      jwtCache = null
       throw new Error('JWT invalid or expired. Please re-login to Agnes gateway.')
     }
 
