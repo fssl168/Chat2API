@@ -240,6 +240,8 @@ export interface ForwardResult {
   latency?: number
   providerSessionId?: string
   parentMessageId?: string
+  /** WAF challenge type detected during this request (0 = none) */
+  wafChallenge?: number
 }
 
 /**

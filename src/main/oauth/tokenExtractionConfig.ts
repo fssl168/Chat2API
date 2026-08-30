@@ -45,6 +45,14 @@ export const TOKEN_EXTRACTION_CONFIGS: Record<ProviderType, TokenExtractionConfi
         type: 'localStorage',
         key: 'userToken',
       },
+      {
+        type: 'cookie',
+        key: 'deepseek_chatgpt_enabled',
+      },
+      {
+        type: 'cookie',
+        key: 'deepseek_csrf_token',
+      },
     ],
     targetDomains: ['.deepseek.com', 'deepseek.com'],
     successUrlPatterns: [/chat\.deepseek\.com/i],
@@ -161,6 +169,18 @@ export const TOKEN_EXTRACTION_CONFIGS: Record<ProviderType, TokenExtractionConfi
     targetDomains: ['.perplexity.ai', 'perplexity.ai'],
     successUrlPatterns: [/perplexity\.ai/i],
     windowTitle: 'Perplexity Login - Please click Sign In to login',
+  },
+  agnes: {
+    loginUrl: 'https://app.agnes-ai.com/login',
+    tokenSources: [
+      {
+        type: 'cookie',
+        key: 'token',
+      },
+    ],
+    targetDomains: ['.agnes-ai.com', 'agnes-ai.com'],
+    successUrlPatterns: [/agnes-ai\.com/i],
+    windowTitle: 'Agnes Login - Please log in at app.agnes-ai.com',
   },
 }
 

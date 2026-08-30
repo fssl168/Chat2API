@@ -182,6 +182,7 @@ interface OAuthAPI {
   startInAppLogin: (providerId: string, providerType: ProviderVendor, timeout?: number) => Promise<OAuthResult>
   cancelInAppLogin: () => Promise<void>
   isInAppLoginOpen: () => Promise<boolean>
+  autoFillCredentials: (providerId: string, providerType: ProviderVendor, editingAccountId?: string) => Promise<{ success: boolean; credentials?: Record<string, string>; userInfo?: { name?: string; email?: string }; error?: string }>
   onCallback: (callback: (result: OAuthResult) => void) => () => void
   onProgress: (callback: (event: {
     status: 'idle' | 'pending' | 'success' | 'error' | 'cancelled'

@@ -532,6 +532,15 @@ export class InAppLoginManager extends EventEmitter {
     return this.loginWindow !== null && !this.loginWindow.isDestroyed()
   }
 
+  /**
+   * Open browser window for credential capture (token + cookies auto-extraction)
+   * Then validate the captured credentials with the provider adapter.
+   */
+  async openForCredentialsCapture(providerId: string, providerType: ProviderType): Promise<InAppLoginResult> {
+    const options: InAppLoginOptions = { providerId, providerType }
+    return await this.startLogin(options)
+  }
+
   destroy(): void {
     this.cancel()
     this.removeAllListeners()

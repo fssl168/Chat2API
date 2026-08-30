@@ -235,6 +235,14 @@ const oauthAPI = {
   isInAppLoginOpen: (): Promise<boolean> =>
     ipcRenderer.invoke(IpcChannels.OAUTH_IN_APP_LOGIN_STATUS),
   
+  autoFillCredentials: (providerId: string, providerType: ProviderType, editingAccountId?: string): Promise<{
+    success: boolean
+    credentials?: Record<string, string>
+    userInfo?: { name?: string; email?: string }
+    error?: string
+  }> =>
+    ipcRenderer.invoke(IpcChannels.ACCOUNTS_AUTO_FILL_CREDENTIALS, { providerId, providerType, editingAccountId }),
+  
   onCallback: (callback: (result: OAuthResult) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, result: OAuthResult) => callback(result)
     ipcRenderer.on(IpcChannels.OAUTH_CALLBACK, handler)

@@ -482,6 +482,35 @@ export class OAuthManager extends EventEmitter {
               ph_token: phToken,
             }
             console.log('[OAuthManager] Mimo: Final credentials prepared:', Object.keys(finalCredentials))
+          } else if (providerType === 'deepseek') {
+            // DeepSeek: extract userToken for validation, save all cookies separately
+            const userToken = collectedTokens.userToken || collectedTokens.token
+            const hasCookies = collectedTokens.cookies && Object.keys(collectedTokens.cookies).length > 0
+            const hasOtherCookies = Object.keys(collectedTokens).some(k => k !== 'userToken' && k !== 'token' && k !== 'cookies')
+
+            if (!userToken) {
+              console.log('[OAuthManager] DeepSeek: No userToken found, waiting...')
+              isValidating = false
+              return
+            }
+
+            // Validate using only userToken
+            validationCredentials = { token: userToken }
+
+            // Save both userToken and all cookies
+            finalCredentials = { token: userToken }
+            if (hasCookies && collectedTokens.cookies) {
+              finalCredentials.cookies = collectedTokens.cookies as any
+            }
+            if (hasOtherCookies) {
+              for (const [key, value] of Object.entries(collectedTokens)) {
+                if (key !== 'userToken' && key !== 'token' && key !== 'cookies' && value) {
+                  finalCredentials[key] = value
+                }
+              }
+            }
+
+            console.log('[OAuthManager] DeepSeek: Extracted userToken, saving cookies:', hasCookies ? Object.keys(collectedTokens.cookies as any).length : 0)
           } else {
             validationCredentials = { ...collectedTokens }
             finalCredentials = { ...collectedTokens }

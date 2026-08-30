@@ -1,13 +1,11 @@
 /**
  * Agnes Adapter
  * Direct connection to official Agnes BFF: https://api-agnes-code.agnes-ai.com/v1
- * JWT is read from ~/AppData/Roaming/Agnes Gateway/jwt.txt or CredMan on Windows
+ * JWT is read from account credentials (extracted via in-app browser cookie login)
  * Uses curl-cffi with TLS impersonation (JA3/JA4), axios fallback
  */
 
 import axios from 'axios'
-import * as fs from 'fs'
-import * as path from 'path'
 import * as os from 'os'
 import { spawnSync } from 'child_process'
 import { Session } from 'curl-cffi-node'
@@ -17,16 +15,6 @@ import { logManager } from '../../logger/manager'
 import { randomUaProfile } from '../utils/uaPool'
 
 const AGNES_BFF_URL = 'https://api-agnes-code.agnes-ai.com'
-const AGNES_CONFIG_DIRS = [
-  path.join(os.homedir(), 'AppData', 'Roaming', 'Agnes Gateway'),
-  path.join(os.homedir(), '.agnes-gateway'),
-  path.join(process.cwd(), 'data'),
-]
-
-// JWT cache (module-level, shared across adapter instances)
-let jwtCache: string | null = null
-let jwtFetchedAt = 0
-const JWT_TTL_MS = 9 * 60 * 1000 // 9 minutes
 
 interface AgnesMessage {
   role: 'user' | 'assistant' | 'system'
@@ -67,10 +55,7 @@ export class AgnesAdapter {
       'User-Agent': uaProfile.userAgent,
     }
 
-    // curl-cffi: secondary fallback only.
-    // Do NOT set verify:false here — curl-impersonate bundles its own CA store;
-    // verify:false only disables chain validation but NOT hostname matching,
-    // so Agnes's cert still fails with error 60. Use axios as the reliable path.
+    // curl-cffi: secondary fallback for TLS impersonation / JA3 fingerprint
     try {
       this.session = new Session({
         impersonate: 'chrome131',
@@ -87,129 +72,14 @@ export class AgnesAdapter {
   }
 
   /**
-   * Find JWT config directory
-   */
-  private findConfigDir(): string | null {
-    for (const dir of AGNES_CONFIG_DIRS) {
-      if (fs.existsSync(dir)) return dir
-    }
-    return null
-  }
-
-  /**
-   * Read JWT from file
-   */
-  private readJwtFromFile(): string | null {
-    const configDir = this.findConfigDir()
-    if (!configDir) return null
-    const jwtFile = path.join(configDir, 'jwt.txt')
-    try {
-      const jwt = fs.readFileSync(jwtFile, 'utf8').trim()
-      if (jwt && jwt.startsWith('eyJ')) {
-        console.log('[Agnes] JWT loaded from:', jwtFile)
-        return jwt
-      }
-    } catch (e) {
-      console.error('[Agnes] Failed to read jwt.txt:', e)
-    }
-    return null
-  }
-
-  /**
-   * Read JWT from Windows Credential Manager
-   */
-  private async readJwtFromCredMan(): Promise<string | null> {
-    if (process.platform !== 'win32') return null
-    const script = `
-import ctypes, json
-from ctypes import wintypes, POINTER, Structure, byref
-class CREDENTIAL(Structure):
-    _fields_=[("Flags",wintypes.DWORD),("Type",wintypes.DWORD),("TargetName",wintypes.LPWSTR),
-              ("Comment",wintypes.LPWSTR),("LastWritten",wintypes.FILETIME),
-              ("CredentialBlobSize",wintypes.DWORD),("CredentialBlob",ctypes.c_void_p),
-              ("Persist",wintypes.DWORD),("AttributeCount",wintypes.DWORD),
-              ("Attributes",ctypes.c_void_p),("TargetAlias",wintypes.LPWSTR),("UserName",wintypes.LPWSTR)]
-p = ctypes.c_void_p()
-if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
-    c = ctypes.cast(p, POINTER(CREDENTIAL)).contents
-    blob = ctypes.string_at(c.CredentialBlob, c.CredentialBlobSize).decode("utf-16-le", "replace")
-    ctypes.windll.advapi32.CredFree(p)
-    try:
-        for v in json.loads(blob).values():
-            if isinstance(v, str) and v.startswith("eyJ"):
-                print(v, flush=True); break
-    except Exception:
-        pass
-`
-    try {
-      const result = spawnSync('python', ['-c', script], {
-        encoding: 'utf8',
-        timeout: 15000,
-      })
-      if (result.status === 0) {
-        const line = (result.stdout || '').split('\n')
-          .map((s: string) => s.trim())
-          .find((s: string) => s.startsWith('eyJ'))
-        if (line) return line
-      }
-    } catch (e) {
-      console.error('[Agnes] Failed to read CredMan:', e)
-    }
-    return null
-  }
-
-  /**
-   * Get JWT token - tries multiple sources
+   * Get JWT token from account credentials
    */
   private async acquireToken(): Promise<string> {
-    const now = Date.now()
-
-    // Return cached JWT if still valid
-    if (jwtCache && now - jwtFetchedAt < JWT_TTL_MS) {
-      console.log('[Agnes] Using cached JWT')
-      logManager.log('info', '[Agnes] Using cached JWT')
-      return jwtCache
-    }
-
-    // Check account credentials first
     const token = this.account.credentials.token || ''
-    if (token.startsWith('eyJ')) {
-      jwtCache = token
-      jwtFetchedAt = now
-      console.log('[Agnes] Using JWT from account credentials')
-      logManager.log('info', '[Agnes] Using JWT from account credentials')
-      return token
+    if (!token.startsWith('eyJ')) {
+      throw new Error('JWT not found. Please re-login at app.agnes-ai.com to obtain a valid token.')
     }
-
-    // Try reading from jwt.txt file
-    let jwt = this.readJwtFromFile()
-    if (jwt) {
-      jwtCache = jwt
-      jwtFetchedAt = now
-      return jwt
-    }
-
-    // Try reading from Windows Credential Manager
-    jwt = await this.readJwtFromCredMan()
-    if (jwt) {
-      jwtCache = jwt
-      jwtFetchedAt = now
-      console.log('[Agnes] Using JWT from CredMan')
-      logManager.log('info', '[Agnes] Using JWT from CredMan')
-      return jwt
-    }
-
-    // Fallback: environment variable
-    const envJwt = process.env.AGNES_DESKTOP_JWT
-    if (envJwt?.startsWith('eyJ')) {
-      jwtCache = envJwt
-      jwtFetchedAt = now
-      console.log('[Agnes] Using JWT from environment')
-      logManager.log('info', '[Agnes] Using JWT from environment')
-      return envJwt
-    }
-
-    throw new Error('JWT not found. Ensure Agnes gateway has been logged in (JWT saved to jwt.txt or CredMan).')
+    return token
   }
 
   /**
@@ -245,6 +115,7 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
         payload,
         {
           headers: {
+            ...this.headers,
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
             'Accept': request.stream ? 'text/event-stream' : 'application/json',
@@ -273,14 +144,31 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
             'Content-Type': 'application/json',
             'Accept': request.stream ? 'text/event-stream' : 'application/json',
           },
+          timeout: 120,
         })
+        // Wrap curl-cffi Response into AxiosResponse-like shape for stream handler
+        // Response API: content (Buffer), text(), json(), stream() — no `body` property
+        const headerObj: Record<string, string> = {}
+        res.headers.forEach((value, key) => {
+          headerObj[key] = value
+        })
+        let nonStreamData: unknown
+        if (request.stream) {
+          nonStreamData = res.stream()
+        } else {
+          try {
+            nonStreamData = res.json()
+          } catch {
+            nonStreamData = res.text()
+          }
+        }
         response = {
-          status: (res as any).status || 200,
+          status: res.status,
           statusText: '',
-          headers: (res as any).headers || {},
+          headers: headerObj,
           config: {},
           request: {},
-          data: request.stream ? (res as any).body : (res as any).body,
+          data: nonStreamData,
         }
         console.log('[Agnes] curl-cffi fallback succeeded')
       } catch (e) {
@@ -296,8 +184,9 @@ if ctypes.windll.advapi32.CredReadW("secrets.agnes", 1, 0, byref(p)):
     logManager.log('info', '[Agnes] Response status: ' + response.status)
 
     if (response.status === 401) {
-      jwtCache = null
-      throw new Error('JWT invalid or expired. Please re-login to Agnes gateway.')
+      const err = new Error('JWT invalid or expired. Please re-login at app.agnes-ai.com.') as Error & { status?: number }
+      err.status = 401
+      throw err
     }
 
     return { response }

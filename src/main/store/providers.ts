@@ -107,7 +107,6 @@ export class ProviderManager {
       type: data.type || 'custom',
       authType: data.authType,
       apiEndpoint: data.apiEndpoint,
-      chatPath: data.chatPath,
       headers: data.headers || {},
       enabled: true,
       createdAt: now,
@@ -116,7 +115,7 @@ export class ProviderManager {
       icon: data.icon,
       supportedModels: data.supportedModels,
       credentialFields: data.credentialFields,
-    }
+    } as any
     
     storeManager.addProvider(provider)
     
@@ -186,7 +185,7 @@ export class ProviderManager {
     if (result) {
       storeManager.addLog('info', `Delete provider: ${provider.name}`, {
         providerId: id,
-        deletedAccounts: accounts.length,
+        data: { deletedAccounts: accounts.length }
       })
     }
     

@@ -80,7 +80,7 @@ function detectMCPToolDefinitions(messages: ChatMessage[]): {
   }
 
   const toolsContent = toolsMatch[1]
-  const toolMatches = toolsContent.matchAll(/<tool>([\s\S]*?)<\/tool>/gi)
+  const toolMatches = Array.from(toolsContent.matchAll(/<tool>([\s\S]*?)<\/tool>/gi))
   const tools: any[] = []
 
   for (const match of toolMatches) {
@@ -118,9 +118,9 @@ function parseMCPArguments(argsContent: string): Record<string, unknown> {
 
     const propsMatch = argsContent.match(/<properties>([\s\S]*?)<\/properties>/i)
     if (propsMatch) {
-      const propMatches = propsMatch[1].matchAll(
+      const propMatches = Array.from(propsMatch[1].matchAll(
         /<property>\s*<name>([^<]*)<\/name>\s*<type>([^<]*)<\/type>([\s\S]*?)<\/property>/gi
-      )
+      ))
 
       for (const match of propMatches) {
         const name = match[1].trim()
@@ -136,7 +136,7 @@ function parseMCPArguments(argsContent: string): Record<string, unknown> {
 
     const requiredMatch = argsContent.match(/<required>([\s\S]*?)<\/required>/i)
     if (requiredMatch) {
-      const reqItems = requiredMatch[1].matchAll(/<item>([^<]*)<\/item>/gi)
+      const reqItems = Array.from(requiredMatch[1].matchAll(/<item>([^<]*)<\/item>/gi))
       for (const match of reqItems) {
         required.push(match[1].trim())
       }
@@ -270,7 +270,7 @@ export function cleanToolPrompts(messages: ChatMessage[]): ChatMessage[] {
   const allContent = extractAllContent(messages)
   const clientResult = detectClientFromContent(allContent)
 
-  if (!clientResult.promptSectionMarkers) {
+  if (!(clientResult as any).promptSectionMarkers) {
     return messages
   }
 

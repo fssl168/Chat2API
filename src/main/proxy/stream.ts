@@ -497,7 +497,7 @@ export class StreamHandler {
         const finalToolCalls = [...toolCalls]
         if (parsedToolCalls.length > 0) {
           parsedToolCalls.forEach(ptc => {
-            ptc.index += finalToolCalls.length
+            (ptc as any).index += finalToolCalls.length
             finalToolCalls.push(ptc)
           })
         }

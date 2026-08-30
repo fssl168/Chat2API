@@ -21,7 +21,7 @@ export const zaiConfig: BuiltinProviderConfig = {
     'Sec-Fetch-Dest': 'empty',
     'Sec-Fetch-Mode': 'cors',
     'Sec-Fetch-Site': 'same-origin',
-    'X-FE-Version': 'prod-fe-1.1.37',
+    'X-FE-Version': 'prod-fe-1.1.92',
     'X-Region': 'domestic',
   },
   enabled: true,

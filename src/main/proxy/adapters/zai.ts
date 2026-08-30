@@ -11,6 +11,7 @@ import FormData from 'form-data'
 import { Account, Provider } from '../../store/types'
 import { hasToolUse, parseToolUse, ToolCall } from '../promptToolUse'
 import { parseToolCallsFromText } from '../utils/toolParser'
+import { randomUaProfile } from '../utils/uaPool'
 import { 
   createToolCallState, 
   processStreamContent, 
@@ -20,24 +21,35 @@ import {
 } from '../utils/streamToolHandler'
 
 const ZAI_API_BASE = 'https://chat.z.ai'
-const X_FE_VERSION = 'prod-fe-1.1.37'
-const ZAI_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36'
+const X_FE_VERSION = 'prod-fe-1.1.92'
 
-const FAKE_HEADERS = {
+// UA resolved per-instance via randomUaProfile()
+
+
+// Static headers shared across all requests
+const FAKE_STATIC_HEADERS = {
   Accept: '*/*',
   'Accept-Encoding': 'gzip, deflate, br, zstd',
   'Accept-Language': 'zh-CN',
   'Cache-Control': 'no-cache',
   Origin: ZAI_API_BASE,
   Pragma: 'no-cache',
-  'Sec-Ch-Ua': '"Not/A)Brand";v="99", "Chromium";v="148"',
-  'Sec-Ch-Ua-Mobile': '?0',
-  'Sec-Ch-Ua-Platform': '"macOS"',
   'Sec-Fetch-Dest': 'empty',
   'Sec-Fetch-Mode': 'cors',
   'Sec-Fetch-Site': 'same-origin',
-  'User-Agent': ZAI_USER_AGENT,
   'X-Region': 'domestic',
+}
+
+function buildZaiHeaders(extra?: Record<string, string>): Record<string, string> {
+  const { userAgent, secChUa, secChUaPlatform } = randomUaProfile()
+  return {
+    ...FAKE_STATIC_HEADERS,
+    'Sec-Ch-Ua': secChUa,
+    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Platform': secChUaPlatform,
+    'User-Agent': userAgent,
+    ...(extra || {}),
+  }
 }
 
 const SEARCH_CITATION_PATTERN = '【turn\\d+search\\d+】'
@@ -257,7 +269,7 @@ export class ZaiAdapter {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
-          ...FAKE_HEADERS,
+          ...buildZaiHeaders(),
           'Cookie': `token=${token}`,
           Referer: `${ZAI_API_BASE}/`,
         },
@@ -284,7 +296,7 @@ export class ZaiAdapter {
         {
           headers: {
             Authorization: `Bearer ${token}`,
-            ...FAKE_HEADERS,
+            ...buildZaiHeaders(),
             Referer: `${ZAI_API_BASE}/`,
           },
           timeout: 15000,
@@ -311,7 +323,7 @@ export class ZaiAdapter {
         {
           headers: {
             Authorization: `Bearer ${token}`,
-            ...FAKE_HEADERS,
+            ...buildZaiHeaders(),
             Referer: `${ZAI_API_BASE}/`,
           },
           timeout: 30000,
@@ -345,12 +357,18 @@ export class ZaiAdapter {
     // - GLM-5V-Turbo uses lowercase "v" in the request model id
     // - GLM-5 and GLM-4.7 use lowercase request model ids
     const modelMapping: Record<string, string> = {
+      'glm-5.3': 'glm-5.3',
+      'glm-5.3-flash': 'glm-5.3-flash',
+      'glm-5.2': 'glm-5.2',
       'glm-5.1': 'GLM-5.1',
       'glm-5-turbo': 'GLM-5-Turbo',
       'glm-5v-turbo': 'GLM-5v-Turbo',
       'glm-5': 'glm-5',
       'glm-4.7': 'glm-4.7',
       // Also handle uppercase input
+      'GLM-5.3': 'glm-5.3',
+      'GLM-5.3-Flash': 'glm-5.3-flash',
+      'GLM-5.2': 'glm-5.2',
       'GLM-5.1': 'GLM-5.1',
       'GLM-5-Turbo': 'GLM-5-Turbo',
       'GLM-5V-Turbo': 'GLM-5v-Turbo',
@@ -484,7 +502,7 @@ export class ZaiAdapter {
       version: '2.1.0',
       platform: 'web',
       token,
-      user_agent: ZAI_USER_AGENT,
+      user_agent: randomUaProfile().userAgent,
       language: 'zh-CN',
       languages: 'zh-CN,zh',
       timezone: 'Asia/Shanghai',
@@ -505,7 +523,7 @@ export class ZaiAdapter {
       hostname: 'chat.z.ai',
       protocol: 'https:',
       referrer: '',
-      title: 'Z.ai - Free AI Chatbot & Agent powered by GLM-5 & GLM-4.7',
+      title: 'Z.ai - Free AI Chatbot & Agent powered by GLM-5.3, GLM-5, and more',
       timezone_offset: '-480',
       local_time: new Date().toISOString(),
       utc_time: new Date().toUTCString(),
@@ -524,7 +542,7 @@ export class ZaiAdapter {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
-          ...FAKE_HEADERS,
+          ...buildZaiHeaders(),
           'X-Signature': signature,
           'X-FE-Version': X_FE_VERSION,
           'Cookie': `token=${token}`,

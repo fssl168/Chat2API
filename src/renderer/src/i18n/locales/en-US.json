@@ -217,7 +217,11 @@
     "updateModelsSuccess": "Model list updated successfully",
     "updateModelsFailed": "Failed to update model list",
     "updateModelsNotSupported": "This provider does not support dynamic model updates",
-    "updatingModels": "Updating model list..."
+    "updatingModels": "Updating model list...",
+    "autoFillCredentials": "Auto-fill Credentials",
+    "autoFilling": "Capturing credentials, please log in...",
+    "autoFillSuccess": "Credentials captured successfully",
+    "autoFillFailed": "Credential capture failed"
   },
   "loginGuide": {
     "getToken": "Get {{provider}} Credentials",
@@ -413,7 +417,7 @@
     "mappingUpdatedPending": "Model mapping {{model}} modified (pending save)",
     "mappingDeletedPending": "Model mapping {{model}} deleted (pending save)",
     "configSaved": "Model mapping configuration saved",
-    "configSaveFailed": "Failed to save configuration, please try again",
+    "configSaveFailed": "Failed to save configuration",
     "unsavedChangesWarning": "You have unsaved changes. Are you sure you want to leave?",
     "unsavedChangesHint": "You have unsaved changes, click save button to save",
     "unsavedChangesTitle": "Unsaved Changes",
@@ -491,12 +495,7 @@
     "restartNow": "Restart Now",
     "restarting": "Restarting...",
     "proxyRestarted": "Proxy service has been restarted with new configuration",
-    "proxyRestartFailed": "Failed to restart proxy service",
-    "validationFailed": "Validation Failed",
-    "fixFormErrors": "Please fix the errors in the form",
-    "proxyConfigUpdated": "Proxy configuration has been updated",
-    "configSaveFailed": "Failed to save configuration",
-    "saving": "Saving..."
+    "proxyRestartFailed": "Failed to restart proxy service"
   },
   "apiKeys": {
     "title": "API Key Management",
@@ -658,6 +657,8 @@
     "autoStartProxyHelp": "Automatically start proxy service when app launches",
     "minimizeToTray": "Minimize to Tray",
     "minimizeToTrayHelp": "Minimize to system tray when closing window",
+    "enableStealth": "Enable Stealth Browser",
+    "enableStealthHelp": "Use Playwright browser automation to bypass WAF challenges (Cloudflare, etc.)",
     "closeBehavior": "Close Behavior",
     "closeBehaviorDesc": "Configure application close behavior",
     "closeBehaviorMinimize": "Minimize",

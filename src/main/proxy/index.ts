@@ -10,4 +10,5 @@ export { LoadBalancer, loadBalancer } from './loadbalancer'
 export { ModelMapper, modelMapper } from './modelMapper'
 export { RequestForwarder, requestForwarder } from './forwarder'
 export { StreamHandler, streamHandler } from './stream'
-export { routes } from './routes'
+import routes from './routes'
+export default routes

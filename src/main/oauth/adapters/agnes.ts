@@ -1,7 +1,7 @@
 /**
  * Agnes Auth Adapter
  * Authentication: Login to https://app.agnes-ai.com/login (AgnesCode app)
- * Use BFF mode: local gateway handles code exchange and JWT persistence
+ * Cookie-based: extracts JWT from browser cookies after login, then validates via API
  */
 
 import { shell } from 'electron'
@@ -11,22 +11,60 @@ import {
   OAuthResult,
   OAuthOptions,
   TokenValidationResult,
+  CredentialInfo,
   AdapterConfig,
 } from '../types'
 
 const AGNES_LOGIN_URL = 'https://app.agnes-ai.com/login'
 const AGNES_API_HOST = 'api-agnes-code.agnes-ai.com'
-const GATEWAY_BASE = 'http://127.0.0.1:8787'
 
 export class AgnesOAuthAdapter extends BaseOAuthAdapter {
   constructor(config: AdapterConfig) {
     super({
       ...config,
       providerType: 'agnes',
-      authMethods: ['manual', 'oauth'],
+      authMethods: ['manual', 'cookie'],
       loginUrl: AGNES_LOGIN_URL,
       apiUrl: `https://${AGNES_API_HOST}`,
     })
+  }
+
+  /**
+   * Complete authentication with manually entered token
+   */
+  async loginWithToken(providerId: string, token: string): Promise<OAuthResult> {
+    this.emitProgress('pending', 'Validating token...')
+
+    try {
+      const validation = await this.validateToken({ token })
+
+      if (!validation.valid) {
+        return {
+          success: false,
+          providerId,
+          providerType: 'agnes',
+          error: validation.error || 'Token validation failed',
+        }
+      }
+
+      this.emitProgress('success', 'Token validation successful')
+
+      return {
+        success: true,
+        providerId,
+        providerType: 'agnes',
+        credentials: { token },
+        accountInfo: validation.accountInfo,
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Validation request failed'
+      return {
+        success: false,
+        providerId,
+        providerType: 'agnes',
+        error: errorMessage,
+      }
+    }
   }
 
   /**
@@ -36,12 +74,12 @@ export class AgnesOAuthAdapter extends BaseOAuthAdapter {
     this.emitProgress('pending', 'Opening Agnes login page...')
     try {
       await shell.openExternal(AGNES_LOGIN_URL)
-      this.emitProgress('pending', 'Please complete login at app.agnes-ai.com, then click OK when done')
+      this.emitProgress('pending', 'Please log in at app.agnes-ai.com, then enter your token manually')
       return {
         success: false,
         providerId: options.providerId,
         providerType: 'agnes',
-        error: 'Please log in at https://app.agnes-ai.com/login, then click OK',
+        error: 'Please log in at https://app.agnes-ai.com, then click OK to enter token manually',
       }
     } catch (error) {
       return {
@@ -53,49 +91,42 @@ export class AgnesOAuthAdapter extends BaseOAuthAdapter {
     }
   }
 
-  /**
-   * After login - fetch JWT from local gateway (BFF mode)
-   */
-  async completeLogin(options: OAuthOptions): Promise<OAuthResult> {
-    this.emitProgress('pending', 'Fetching JWT from Agnes gateway...')
-    try {
-      const res = await axios.get(`${GATEWAY_BASE}/admin/status`, { timeout: 10000 })
-      const jwt = res.data?.jwt?.prefix ? res.data.jwt.prefix.replace('...', '') : null
-      if (!jwt) {
-        return {
-          success: false,
-          providerId: options.providerId,
-          providerType: 'agnes',
-          error: 'JWT not available from gateway. Please ensure gateway is logged in (BFF mode).',
-        }
-      }
-      // The full JWT is available from gateway through /auth/callback or readJwt
-      // For now, return partial success and instruct user to copy full JWT from admin/status
-      return {
-        success: true,
-        providerId: options.providerId,
-        providerType: 'agnes',
-        credentials: { token: 'JWT available - visit http://127.0.0.1:8787/admin/status to get full token' },
-      }
-    } catch (e) {
-      return {
-        success: false,
-        providerId: options.providerId,
-        providerType: 'agnes',
-        error: 'Failed to fetch JWT from gateway: ' + String(e),
-      }
-    }
-  }
-
   async validateToken(credentials: Record<string, string>): Promise<TokenValidationResult> {
     try {
       const token = credentials?.token || ''
       if (!token.startsWith('eyJ')) {
-        return { valid: false, error: 'Invalid JWT format' }
+        return { valid: false, error: 'Invalid JWT format: token must start with eyJ' }
       }
+
+      // 实际调用 Agnes API 验证 Token 是否有效
+      const response = await axios.get(`https://${AGNES_API_HOST}/v1/models`, {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 15000,
+        validateStatus: () => true,
+      })
+
+      if (response.status === 401) {
+        return {
+          valid: false,
+          error: 'Token expired or invalid. Please re-login at app.agnes-ai.com and get a new token.',
+        }
+      }
+
+      if (response.status !== 200) {
+        return {
+          valid: false,
+          error: `Token validation failed with status ${response.status}. Please re-login.`,
+        }
+      }
+
+      // Token 有效
       return { valid: true }
     } catch (e) {
-      return { valid: false, error: String(e) }
+      const errMsg = e instanceof Error ? e.message : String(e)
+      return {
+        valid: false,
+        error: `Validation request failed: ${errMsg}. Check your network and try again.`,
+      }
     }
   }
 }

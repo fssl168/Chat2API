@@ -12,6 +12,7 @@ import managementRoutes from './routes/management'
 import { proxyStatusManager } from './status'
 import { storeManager } from '../store/store'
 import { sessionManager } from './sessionManager'
+import { requestForwarder } from './forwarder'
 
 const SLOW_REQUEST_THRESHOLD_MS = 1500
 
@@ -324,6 +325,9 @@ export class ProxyServer {
     }
     
     sessionManager.destroy()
+
+    // Clean up stealth browser engine and session vault
+    await requestForwarder.shutdownStealthEngine()
 
     return new Promise((resolve) => {
       this.server!.close((err) => {

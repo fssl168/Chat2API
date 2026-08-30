@@ -28,9 +28,12 @@ if (process.getuid && process.getuid() === 0) {
   console.log('Detected running as root user, sandbox settings have been automatically handled')
 }
 
-declare module 'electron' {
-  interface App {
-    isQuitting?: boolean
+// Extend App type for isQuitting flag
+declare global {
+  namespace Electron {
+    interface App {
+      isQuitting?: boolean
+    }
   }
 }
 

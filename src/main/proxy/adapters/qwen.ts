@@ -12,6 +12,7 @@ import { createParser } from 'eventsource-parser'
 import { Account, Provider } from '../../store/types'
 import { hasToolUse, parseToolUse, ToolCall } from '../promptToolUse'
 import { toolsToSystemPrompt, TOOL_WRAP_HINT, hasToolPromptInjected, shouldInjectToolPrompt } from '../utils/tools'
+import { randomUaProfile } from '../utils/uaPool'
 import { parseToolCallsFromText } from '../utils/toolParser'
 import { createBaseChunk } from '../utils/streamToolHandler'
 import { getProviderToolProfile } from '../toolCalling/providerProfiles'
@@ -38,20 +39,29 @@ const MODEL_MAP: Record<string, string> = {
   'Qwen3-Coder': 'Qwen3-Coder',
 }
 
-const DEFAULT_HEADERS = {
+// Static headers shared across all requests
+const DEFAULT_STATIC_HEADERS = {
   Accept: 'application/json, text/event-stream, text/plain, */*',
   'Accept-Language': 'zh-CN,zh;q=0.9',
   'Cache-Control': 'no-cache',
   Origin: 'https://www.qianwen.com',
   Pragma: 'no-cache',
-  'Sec-Ch-Ua': '"Chromium";v="145", "Not(A:Brand";v="24", "Google Chrome";v="145"',
-  'Sec-Ch-Ua-Mobile': '?0',
-  'Sec-Ch-Ua-Platform': '"macOS"',
   'Sec-Fetch-Dest': 'empty',
   'Sec-Fetch-Mode': 'cors',
   'Sec-Fetch-Site': 'same-site',
   Referer: 'https://www.qianwen.com/',
-  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
+}
+
+function buildQwenHeaders(extra?: Record<string, string>): Record<string, string> {
+  const { userAgent, secChUa, secChUaPlatform } = randomUaProfile()
+  return {
+    ...DEFAULT_STATIC_HEADERS,
+    'Sec-Ch-Ua': secChUa,
+    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Platform': secChUaPlatform,
+    'User-Agent': userAgent,
+    ...(extra || {}),
+  }
 }
 
 interface QwenMessage {
@@ -139,7 +149,7 @@ export class QwenAdapter {
   private getApiHeaders(ticket: string): Record<string, string> {
     return {
       Cookie: `tongyi_sso_ticket=${ticket}`,
-      ...DEFAULT_HEADERS,
+      ...buildQwenHeaders(),
       'Content-Type': 'application/json',
       'X-Platform': 'pc_tongyi',
       'X-DeviceId': '5b68c267-cd8e-fd0e-148a-18345bc9a104',
@@ -305,7 +315,7 @@ export class QwenAdapter {
     // Determine if thinking and web search should be enabled
     // Priority: explicit parameters > model name detection
     // Use originalModel for feature detection (preserves user's intent before mapping)
-    const modelForDetection = request.originalModel || request.model
+    const modelForDetection = (request as any).originalModel || request.model
     const modelLower = modelForDetection.toLowerCase()
     
     let enableThinking = request.enableThinking ?? false
@@ -418,7 +428,7 @@ export class QwenAdapter {
 
     const response = await this.axiosInstance.post(url, requestBody, {
       headers: {
-        ...DEFAULT_HEADERS,
+        ...buildQwenHeaders(),
         'Content-Type': 'application/json',
         Cookie: `tongyi_sso_ticket=${ticket}`,
       },

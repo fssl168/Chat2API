@@ -5,7 +5,7 @@ import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { useSettingsStore, CloseBehavior, OAuthProxyMode } from '@/stores/settingsStore'
-import { Bell, Minimize2, Power, Globe } from 'lucide-react'
+import { Bell, Minimize2, Power, Globe, Shield } from 'lucide-react'
 
 export function GeneralSettings() {
   const { t } = useTranslation()
@@ -22,6 +22,8 @@ export function GeneralSettings() {
     setEnableNotifications,
     oauthProxyMode,
     setOauthProxyMode,
+    enableStealth,
+    setEnableStealth,
   } = useSettingsStore()
 
   return (
@@ -55,6 +57,28 @@ export function GeneralSettings() {
               id="auto-start-proxy"
               checked={autoStartProxy}
               onCheckedChange={setAutoStartProxy}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2">
+            <Shield className="h-5 w-5" />
+            {t('settings.enableStealth')}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="enable-stealth">{t('settings.enableStealth')}</Label>
+              <p className="text-sm text-muted-foreground">{t('settings.enableStealthHelp')}</p>
+            </div>
+            <Switch
+              id="enable-stealth"
+              checked={enableStealth}
+              onCheckedChange={setEnableStealth}
             />
           </div>
         </CardContent>

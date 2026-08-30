@@ -14,6 +14,7 @@ import {
   AdapterConfig,
   OAuthCallbackData,
 } from '../types'
+import { randomUaProfile } from '../../proxy/utils/uaPool'
 
 const KIMI_API_BASE = 'https://www.kimi.com'
 
@@ -25,15 +26,23 @@ const FAKE_HEADERS = {
   Pragma: 'no-cache',
   Origin: KIMI_API_BASE,
   'R-Timezone': 'Asia/Shanghai',
-  'Sec-Ch-Ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
-  'Sec-Ch-Ua-Mobile': '?0',
-  'Sec-Ch-Ua-Platform': '"Windows"',
   'Sec-Fetch-Dest': 'empty',
   'Sec-Fetch-Mode': 'cors',
   'Sec-Fetch-Site': 'same-origin',
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
   Priority: 'u=1, i',
   'X-Msh-Platform': 'web',
+}
+
+
+function buildKimiOauthHeaders(extra?: Record<string, string>): Record<string, string> {
+  const { userAgent, secChUa, secChUaPlatform } = randomUaProfile()
+  return {
+    ...FAKE_HEADERS,
+    'Sec-Ch-Ua': secChUa,
+    'Sec-Ch-Ua-Platform': secChUaPlatform,
+    'User-Agent': userAgent,
+    ...(extra || {}),
+  }
 }
 
 export class KimiAdapter extends BaseOAuthAdapter {
@@ -113,7 +122,7 @@ export class KimiAdapter extends BaseOAuthAdapter {
    */
   private getHeaders(token?: string): Record<string, string> {
     const headers: Record<string, string> = {
-      ...FAKE_HEADERS,
+      ...buildKimiOauthHeaders(),
       'X-Msh-Device-Id': this.deviceId,
       'X-Msh-Session-Id': this.sessionId,
       'Connect-Protocol-Version': '1',
@@ -136,7 +145,7 @@ export class KimiAdapter extends BaseOAuthAdapter {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
           'Connect-Protocol-Version': '1',
-          ...FAKE_HEADERS,
+          ...buildKimiOauthHeaders(),
         },
         timeout: 15000,
         validateStatus: () => true,

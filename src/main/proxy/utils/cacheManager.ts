@@ -91,7 +91,7 @@ export class LRUCache<K, V> {
 
   purgeStale(): number {
     let purged = 0
-    for (const [key, entry] of this.cache.entries()) {
+    for (const [key, entry] of Array.from(this.cache.entries())) {
       if (this.isExpired(entry)) {
         this.cache.delete(key)
         purged++
@@ -148,7 +148,7 @@ export class CacheManager {
   }
 
   clearAll(): void {
-    for (const cache of this.caches.values()) {
+    for (const cache of Array.from(this.caches.values())) {
       cache.clear()
     }
     console.log('[CacheManager] All caches cleared')
@@ -162,7 +162,7 @@ export class CacheManager {
 
     this.cleanupInterval = setInterval(() => {
       let totalPurged = 0
-      for (const [name, cache] of this.caches.entries()) {
+      for (const [name, cache] of Array.from(this.caches.entries())) {
         const purged = cache.purgeStale()
         if (purged > 0) {
           totalPurged += purged
@@ -198,7 +198,7 @@ export class CacheManager {
 
   getTotalSize(): number {
     let total = 0
-    for (const cache of this.caches.values()) {
+    for (const cache of Array.from(this.caches.values())) {
       total += cache.size()
     }
     return total

@@ -1370,7 +1370,7 @@ export class RequestForwarder {
       const adapter = new AgnesAdapter(provider, account)
 
       const { response } = await adapter.chatCompletion({
-        model: request.model,
+        model: actualModel,
         messages: transformedRequest.messages as any,
         stream: transformedRequest.stream,
         temperature: transformedRequest.temperature,
@@ -1393,7 +1393,7 @@ export class RequestForwarder {
         if (!response.data) {
           return { success: false, status: response.status, error: 'Empty response from provider', latency }
         }
-        const handler = new AgnesStreamHandler(actualModel)
+        const handler = new AgnesStreamHandler(actualModel, undefined, transformed.plan)
         const transformedStream = await handler.handleStream(response.data)
         return {
           success: true,
@@ -1405,7 +1405,8 @@ export class RequestForwarder {
         }
       }
 
-      const result = await new AgnesStreamHandler(actualModel).handleNonStream(response.data)
+      // 非流式请求：直接使用解析后的 JSON 对象
+      const result = response.data
       this.applyToolCallsToResponse(result, transformed)
       return {
         success: true,
@@ -1418,7 +1419,7 @@ export class RequestForwarder {
       const latency = Date.now() - startTime
       return {
         success: false,
-        status: (error as any)?.response?.status,
+        status: (error as any)?.response?.status ?? (error as any)?.status,
         error: error instanceof Error ? error.message : 'Unknown error',
         latency,
       }

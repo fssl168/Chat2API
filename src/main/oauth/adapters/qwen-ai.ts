@@ -13,9 +13,11 @@ import {
   AdapterConfig,
   OAuthCallbackData,
 } from '../types'
+import { randomUaProfile } from '../../proxy/utils/uaPool'
 
 const QWEN_AI_API_BASE = 'https://chat.qwen.ai'
 
+// UA randomized per-request via randomUaProfile()
 const FAKE_HEADERS = {
   Accept: 'application/json',
   'Accept-Encoding': 'gzip, deflate, br, zstd',
@@ -23,16 +25,26 @@ const FAKE_HEADERS = {
   'Cache-Control': 'no-cache',
   Origin: QWEN_AI_API_BASE,
   Pragma: 'no-cache',
-  'Sec-Ch-Ua': '"Chromium";v="144", "Not(A:Brand";v="8", "Google Chrome";v="144"',
-  'Sec-Ch-Ua-Mobile': '?0',
-  'Sec-Ch-Ua-Platform': '"Windows"',
   'Sec-Fetch-Dest': 'empty',
   'Sec-Fetch-Mode': 'cors',
   'Sec-Fetch-Site': 'same-origin',
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36',
   source: 'web',
 }
 
+
+
+
+function buildQwenAiOauthHeaders(extra?: Record<string, string>): Record<string, string> {
+  const { userAgent, secChUa, secChUaPlatform } = randomUaProfile()
+  return {
+    ...buildQwenAiOauthHeaders(),
+    'Sec-Ch-Ua': secChUa,
+    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Platform': secChUaPlatform,
+    'User-Agent': userAgent,
+    ...(extra || {}),
+  }
+}
 export class QwenAiAdapter extends BaseOAuthAdapter {
   constructor(config: AdapterConfig) {
     super({
@@ -160,7 +172,7 @@ export class QwenAiAdapter extends BaseOAuthAdapter {
       const response = await axios.get(`${QWEN_AI_API_BASE}/api/v2/user/info`, {
         headers: {
           Authorization: `Bearer ${token}`,
-          ...FAKE_HEADERS,
+          ...buildQwenAiOauthHeaders(),
         },
         timeout: 15000,
         validateStatus: () => true,

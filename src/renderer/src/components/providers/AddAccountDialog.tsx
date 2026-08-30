@@ -43,8 +43,8 @@ function mapOAuthCredentials(providerId: string | undefined, credentials: Record
     'glm': 'chatglm_refresh_token',
     'deepseek': 'userToken',
     'qwen': 'tongyi_sso_ticket',
-    'qwen-ai': 'tongyi_sso_ticket',
-    'zai': 'tongyi_sso_ticket',
+    'qwen-ai': 'token',
+    'zai': 'token',
     'perplexity': '__Secure-next-auth.session-token',
     'mimo': 'serviceToken',
   }
@@ -53,8 +53,8 @@ function mapOAuthCredentials(providerId: string | undefined, credentials: Record
     'glm': 'refresh_token',
     'deepseek': 'token',
     'qwen': 'ticket',
-    'qwen-ai': 'ticket',
-    'zai': 'ticket',
+    'qwen-ai': 'token',
+    'zai': 'token',
     'perplexity': 'sessionToken',
     'mimo': 'service_token',
   }
@@ -337,6 +337,46 @@ export function AddAccountDialog({
     }
   }
 
+  // Auto-fill credentials from in-app browser capture
+  const handleAutoFillCredentials = async () => {
+    if (!provider || !window.electronAPI?.oauth) return
+    
+    setIsAutoFilling(true)
+    setAutoFillStatus(t('providers.autoFilling'))
+    
+    try {
+      const result = await window.electronAPI.oauth.autoFillCredentials(
+        provider.id,
+        provider.id as ProviderVendor,
+        isEditing ? editingAccount?.id : undefined
+      )
+      
+      if (result.success && result.credentials) {
+        // Map OAuth credentials to provider field names
+        const mappedCredentials = mapOAuthCredentials(provider.id, result.credentials)
+        setCredentials(mappedCredentials)
+        setAutoFillStatus(t('providers.autoFillSuccess'))
+        
+        if (result.userInfo?.name && !name) {
+          setName(result.userInfo.name)
+        }
+        
+        setValidationResult({
+          valid: true,
+          userInfo: result.userInfo,
+        })
+      } else {
+        const errorMsg = result.error || t('providers.autoFillFailed')
+        setAutoFillStatus(errorMsg)
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : t('providers.autoFillFailed')
+      setAutoFillStatus(errorMessage)
+    } finally {
+      setIsAutoFilling(false)
+    }
+  }
+
   if (!provider) return null
 
   return (
@@ -428,6 +468,37 @@ export function AddAccountDialog({
               </Tabs>
             )}
 
+            {supportsOAuth && !isEditing && !isAutoFilling && autoFillStatus && (
+              <div className="text-sm text-muted-foreground mb-2">{autoFillStatus}</div>
+            )}
+            {supportsOAuth && isAutoFilling && (
+              <div className="flex items-center gap-2 text-sm text-blue-600 mb-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>{autoFillStatus || t('providers.autoFilling')}</span>
+              </div>
+            )}
+            {supportsOAuth && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleAutoFillCredentials}
+                disabled={isAutoFilling}
+                className="mb-4 w-full"
+              >
+                {isAutoFilling ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {autoFillStatus || t('providers.autoFilling')}
+                  </>
+                ) : (
+                  <>
+                    <ExternalLink className="mr-2 h-4 w-4" />
+                    {t('providers.autoFillCredentials')}
+                  </>
+                )}
+              </Button>
+            )}
             {(!supportsOAuth || isEditing) && (
               <CredentialFieldsForm
                 fields={credentialFields}

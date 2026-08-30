@@ -1,23 +1,42 @@
 import { net } from 'electron'
 import { Readable } from 'stream'
-import { Account, Provider } from '../store/types'
+import { Account, Provider } from '../../store/types'
+import { randomUaProfile } from '../utils/uaPool'
+import { detectChallenge, ChallengeType } from '../challengeDetector'
+import { getSessionVault } from '../sessionVault'
+
+// External stealth fetcher injected by the forwarder
+let stealthFetcher: ((url: string, domain: string) => Promise<{ status: number; body: string; headers: Record<string, string> }>) | null = null
+
+export function setPerplexityStealthFetcher(fetcher: typeof stealthFetcher): void {
+  stealthFetcher = fetcher
+}
 
 const PERPLEXITY_URL = 'https://www.perplexity.ai'
 const QUERY_ENDPOINT = `${PERPLEXITY_URL}/rest/sse/perplexity_ask`
 
-const FAKE_HEADERS: Record<string, string> = {
+// Static headers shared across all requests
+const FAKE_STATIC_HEADERS: Record<string, string> = {
   'Accept': 'text/event-stream',
   'Accept-Encoding': 'gzip, deflate, br, zstd',
   'Accept-Language': 'en-US,en;q=0.9',
   'Cache-Control': 'no-cache',
   'Origin': PERPLEXITY_URL,
-  'Sec-Ch-Ua': '"Chromium";v="134", "Not:A-Brand";v="24", "Google Chrome";v="134"',
-  'Sec-Ch-Ua-Mobile': '?0',
-  'Sec-Ch-Ua-Platform': '"macOS"',
   'Sec-Fetch-Dest': 'empty',
   'Sec-Fetch-Mode': 'cors',
   'Sec-Fetch-Site': 'same-origin',
-  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
+}
+
+function buildPerpHeaders(extra?: Record<string, string>): Record<string, string> {
+  const { userAgent, secChUa, secChUaPlatform } = randomUaProfile()
+  return {
+    ...FAKE_STATIC_HEADERS,
+    'Sec-Ch-Ua': secChUa,
+    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Platform': secChUaPlatform,
+    'User-Agent': userAgent,
+    ...(extra || {}),
+  }
 }
 
 interface PerplexityMessage {
@@ -54,6 +73,34 @@ interface StoredCookies {
 const sessionCache = new Map<string, SessionData>()
 const cookiesCache = new Map<string, StoredCookies>()
 
+/**
+ * Extract SSE stream from an HTML response body (stealth bypass result).
+ * The stealth browser may return the full page; we scan for SSE data lines.
+ */
+function parseSSEFromHTML(body: string): Readable | null {
+  const lines = body.split('\n')
+  const sseLines: Buffer[] = []
+  let collecting = false
+
+  for (const line of lines) {
+    if (line.startsWith('data:')) {
+      collecting = true
+      sseLines.push(Buffer.from(line + '\n'))
+    } else if (line === '' && collecting) {
+      // Double newline signals end of SSE event — keep collecting
+      sseLines.push(Buffer.from('\n'))
+    } else if (collecting && line.includes('"text"')) {
+      sseLines.push(Buffer.from(line + '\n'))
+    }
+  }
+
+  if (sseLines.length === 0) return null
+  const stream = new Readable({ read() {} })
+  stream.push(Buffer.concat(sseLines))
+  stream.push(null)
+  return stream
+}
+
 function uuid(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0
@@ -68,10 +115,11 @@ function extractQuery(messages: PerplexityMessage[]): string {
   for (const msg of messages) {
     if (msg.role === 'system') {
       const content = msg.content
+      const contentArr = content
       if (typeof content === 'string') {
         systemPrompt = content
-      } else if (Array.isArray(content)) {
-        const texts = content
+      } else if (Array.isArray(contentArr)) {
+        const texts = (contentArr as any[])
           .filter((item: any) => item.type === 'text')
           .map((item: any) => item.text)
         systemPrompt = texts.join('\n')
@@ -86,10 +134,11 @@ function extractQuery(messages: PerplexityMessage[]): string {
     if (msg.role === 'system') continue
     
     let content = ''
+    const msgContent = msg.content
     if (typeof msg.content === 'string') {
       content = msg.content
-    } else if (Array.isArray(msg.content)) {
-      const texts = msg.content
+    } else if (Array.isArray(msgContent)) {
+      const texts = (msgContent as any[])
         .filter((item: any) => item.type === 'text')
         .map((item: any) => item.text)
       content = texts.join('\n')
@@ -166,7 +215,7 @@ export class PerplexityAdapter {
     this.account = account
     this.cookie = account.credentials.sessionToken || account.credentials.cookie || account.credentials.token || ''
     // Store all cookies from credentials for Cloudflare-protected requests
-    this.allCookies = account.credentials.cookies || {}
+    this.allCookies = (account.credentials.cookies || {}) as StoredCookies
     // Ensure session token is in allCookies
     if (this.cookie && !this.allCookies['__Secure-next-auth.session-token']) {
       this.allCookies['__Secure-next-auth.session-token'] = this.cookie
@@ -302,7 +351,7 @@ export class PerplexityAdapter {
     const referer = `${PERPLEXITY_URL}/`
 
     const headers: Record<string, string> = {
-      ...FAKE_HEADERS,
+      ...buildPerpHeaders(),
       'Content-Type': 'application/json',
       'Cookie': `__Secure-next-auth.session-token=${this.cookie}`,
       'x-perplexity-request-reason': 'perplexity-query-state-provider',
@@ -335,9 +384,42 @@ export class PerplexityAdapter {
         const statusCode = response.statusCode
         
         if (statusCode === 403) {
-          // Cloudflare challenge - need to handle this
-          stream.emit('error', new Error('Cloudflare challenge detected. Please try again later.'))
-          reject(new Error('Cloudflare challenge detected'))
+          // Cloudflare challenge detected — read body for diagnosis, then try stealth fallback
+          let challengeBody = ''
+          response.on('data', (chunk: Buffer) => { challengeBody += chunk.toString() })
+          response.on('end', async () => {
+            const cfChallenge = detectChallenge(challengeBody, {}).type
+            console.warn(`[Perplexity] Cloudflare 403 detected [${ChallengeType[cfChallenge]}]. Attempting stealth bypass...`)
+            if (stealthFetcher) {
+              try {
+                const vault = getSessionVault()
+                const domain = new URL(QUERY_ENDPOINT).hostname
+                const storedCookies = vault.getCookieHeader(domain)
+                const stealthHeaders: Record<string, string> = { ...buildPerpHeaders() }
+                if (storedCookies) stealthHeaders['Cookie'] = storedCookies
+                stealthHeaders['Cookie'] += `; __Secure-next-auth.session-token=${this.cookie}`
+                stealthHeaders['Content-Type'] = 'application/json'
+                stealthHeaders['x-perplexity-request-reason'] = 'perplexity-query-state-provider'
+                stealthHeaders['x-request-id'] = requestId
+                stealthHeaders['Referer'] = referer
+
+                const stealthResult = await stealthFetcher!(QUERY_ENDPOINT, domain)
+                if (stealthResult.status === 200 && !detectChallenge(stealthResult.body, stealthResult.headers).type) {
+                  // Parse SSE from stealth response
+                  const sseStream = parseSSEFromHTML(stealthResult.body)
+                  if (sseStream) {
+                    resolve({ stream: sseStream, sessionId: requestId })
+                    return
+                  }
+                }
+                console.warn(`[Perplexity] Stealth bypass also failed (status=${stealthResult.status})`)
+              } catch (stealthErr) {
+                console.error('[Perplexity] Stealth fallback error:', stealthErr)
+              }
+            }
+            stream.emit('error', new Error('Cloudflare challenge detected. Please try again later.'))
+            reject(new Error('Cloudflare challenge detected'))
+          })
           return
         }
         
@@ -438,7 +520,7 @@ export class PerplexityAdapter {
         'Cookie': this.buildCookieHeader(),
         'Origin': PERPLEXITY_URL,
         'Referer': `${PERPLEXITY_URL}/`,
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
+        'User-Agent': randomUaProfile().userAgent,
         'sec-ch-ua': '"Chromium";v="134", "Not:A-Brand";v="24", "Google Chrome";v="134"',
         'sec-ch-ua-mobile': '?0',
         'sec-ch-ua-platform': '"macOS"',
@@ -512,7 +594,7 @@ export class PerplexityAdapter {
       'Cookie': this.buildCookieHeader(),
       'Origin': PERPLEXITY_URL,
       'Referer': `${PERPLEXITY_URL}/library`,
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
+      'User-Agent': randomUaProfile().userAgent,
       'sec-ch-ua': '"Chromium";v="134", "Not:A-Brand";v="24", "Google Chrome";v="134"',
       'sec-ch-ua-mobile': '?0',
       'sec-ch-ua-platform': '"macOS"',

@@ -96,6 +96,15 @@ export const useSettingsStore = create<SettingsState>()(
       },
       minimizeToTray: true,
       setMinimizeToTray: (enabled) => set({ minimizeToTray: enabled }),
+      enableStealth: false,
+      setEnableStealth: async (enabled) => {
+        set({ enableStealth: enabled })
+        try {
+          await window.electronAPI.config.update({ enableStealth: enabled })
+        } catch (error) {
+          console.error('Failed to update enableStealth:', error)
+        }
+      },
       closeBehavior: 'minimize',
       setCloseBehavior: (behavior) => set({ closeBehavior: behavior }),
       enableNotifications: true,
@@ -144,6 +153,7 @@ export const useSettingsStore = create<SettingsState>()(
             autoStartProxy: config.autoStartProxy,
             oauthProxyMode: config.oauthProxyMode || 'system',
             language: config.language || 'en-US',
+            enableStealth: config.enableStealth ?? false,
           })
         } catch (error) {
           console.error('Failed to fetch config:', error)

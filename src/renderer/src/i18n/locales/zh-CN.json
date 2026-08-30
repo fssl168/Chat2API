@@ -217,7 +217,11 @@
     "updateModelsSuccess": "模型列表更新成功",
     "updateModelsFailed": "模型列表更新失败",
     "updateModelsNotSupported": "该供应商不支持动态更新模型",
-    "updatingModels": "正在更新模型列表..."
+    "updatingModels": "正在更新模型列表...",
+    "autoFillCredentials": "自动获取凭证",
+    "autoFilling": "正在捕获凭证，请登录...",
+    "autoFillSuccess": "凭证捕获成功",
+    "autoFillFailed": "凭证捕获失败"
   },
   "loginGuide": {
     "getToken": "获取 {{provider}} 凭证",
@@ -656,6 +660,8 @@
     "autoStartProxyHelp": "应用启动时自动启动代理服务",
     "minimizeToTray": "最小化到托盘",
     "minimizeToTrayHelp": "关闭窗口时最小化到系统托盘",
+    "enableStealth": "启用隐身浏览器",
+    "enableStealthHelp": "使用 Playwright 浏览器自动化绕过 WAF 挑战（Cloudflare 等）",
     "closeBehavior": "关闭行为",
     "closeBehaviorDesc": "配置应用关闭时的行为",
     "closeBehaviorMinimize": "最小化",

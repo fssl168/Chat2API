@@ -15,9 +15,11 @@ import {
   AdapterConfig,
   OAuthCallbackData,
 } from '../types'
+import { randomUaProfile } from '../../proxy/utils/uaPool'
 
 const MINIMAX_API_BASE = 'https://agent.minimaxi.com'
 
+// UA randomized per-request via randomUaProfile()
 const FAKE_HEADERS = {
   Accept: 'application/json, text/plain, */*',
   'Accept-Encoding': 'gzip, deflate, br, zstd',
@@ -25,15 +27,25 @@ const FAKE_HEADERS = {
   'Cache-Control': 'no-cache',
   Origin: MINIMAX_API_BASE,
   Pragma: 'no-cache',
-  'Sec-Ch-Ua': '"Not:A-Brand";v="99", "Google Chrome";v="145", "Chromium";v="145"',
-  'Sec-Ch-Ua-Mobile': '?0',
-  'Sec-Ch-Ua-Platform': '"macOS"',
   'Sec-Fetch-Dest': 'empty',
   'Sec-Fetch-Mode': 'cors',
   'Sec-Fetch-Site': 'same-origin',
-  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
 }
 
+
+
+
+function buildMiniMaxOauthHeaders(extra?: Record<string, string>): Record<string, string> {
+  const { userAgent, secChUa, secChUaPlatform } = randomUaProfile()
+  return {
+    ...buildMiniMaxOauthHeaders(),
+    'Sec-Ch-Ua': secChUa,
+    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Platform': secChUaPlatform,
+    'User-Agent': userAgent,
+    ...(extra || {}),
+  }
+}
 const FAKE_USER_DATA: Record<string, any> = {
   device_platform: 'web',
   biz_id: '3',
@@ -225,7 +237,7 @@ export class MiniMaxAdapter extends BaseOAuthAdapter {
         headers: {
           Referer: `${MINIMAX_API_BASE}/`,
           token: jwtToken,
-          ...FAKE_HEADERS,
+          ...buildMiniMaxOauthHeaders(),
           'Content-Type': 'application/json',
           'x-timestamp': String(timestamp),
           'x-signature': signature,
@@ -280,7 +292,7 @@ export class MiniMaxAdapter extends BaseOAuthAdapter {
   private extractUserIdFromToken(token: string): string | undefined {
     try {
       const payload = this.parseJWT(token)
-      return payload?.user?.id as string | undefined || payload?.sub as string | undefined
+      return (payload as any)?.user?.id || (payload as any)?.sub
     } catch {
       return undefined
     }
@@ -297,7 +309,7 @@ export class MiniMaxAdapter extends BaseOAuthAdapter {
     try {
       const response = await axios.get(`${MINIMAX_API_BASE}/v1/api/user/credit`, {
         headers: {
-          ...FAKE_HEADERS,
+          ...buildMiniMaxOauthHeaders(),
           'token': token,
           Referer: `${MINIMAX_API_BASE}/`,
         },

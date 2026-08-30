@@ -22,7 +22,7 @@ export type OAuthStatus = 'idle' | 'pending' | 'success' | 'error' | 'cancelled'
 /**
  * Token type
  */
-export type TokenType = 'jwt' | 'refresh' | 'access' | 'cookie'
+export type TokenType = 'jwt' | 'refresh' | 'access' | 'cookie' | 'token'
 
 /**
  * OAuth login result
@@ -211,11 +211,31 @@ export const MANUAL_TOKEN_CONFIGS: Record<ProviderType, ManualTokenConfig[]> = {
   agnes: [
     {
       providerType: 'agnes',
-      tokenType: 'jwt',
+      tokenType: 'cookie',
       label: 'JWT Token',
       placeholder: 'Enter JWT token (eyJ...)',
-      description: 'Get JWT from Agnes gateway admin page (http://127.0.0.1:8787/admin) or jwt.txt file',
-      helpUrl: 'http://127.0.0.1:8787/admin',
+      description: 'Log in at app.agnes-ai.com, open DevTools, copy the "token" cookie value',
+      helpUrl: 'https://app.agnes-ai.com/login',
+    },
+  ],
+  zai: [
+    {
+      providerType: 'zai',
+      tokenType: 'cookie',
+      label: 'Auth Cookie',
+      placeholder: 'Enter auth cookie from chat.z.ai',
+      description: 'Get auth cookie from chat.z.ai browser DevTools',
+      helpUrl: 'https://chat.z.ai',
+    },
+  ],
+  mimo: [
+    {
+      providerType: 'mimo',
+      tokenType: 'cookie',
+      label: 'Service Token',
+      placeholder: 'Enter serviceToken from aistudio.xiaomimimo.com',
+      description: 'Get serviceToken from aistudio.xiaomimimo.com browser DevTools',
+      helpUrl: 'https://aistudio.xiaomimimo.com',
     },
   ],
 }

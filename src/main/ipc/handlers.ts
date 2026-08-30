@@ -8,6 +8,7 @@ import { ProviderChecker } from '../providers/checker'
 import { CustomProviderManager } from '../providers/custom'
 import { getBuiltinProviders, getBuiltinProvider } from '../providers/builtin'
 import { oauthManager } from '../oauth/manager'
+import { inAppLoginManager } from '../oauth/inAppLogin'
 import { ProxyServer } from '../proxy/server'
 import { proxyStatusManager } from '../proxy/status'
 import { sessionManager } from '../proxy/sessionManager'
@@ -209,7 +210,7 @@ export async function registerIpcHandlers(mainWindow: BrowserWindow | null): Pro
   })
 
   ipcMain.handle(IpcChannels.CONFIG_UPDATE, async (_, updates: Partial<AppConfig>) => {
-    const newConfig = storeManager.updateConfig(updates)
+    const newConfig = storeManager.updateConfig(updates as any)
     
     BrowserWindow.getAllWindows().forEach((win) => {
       if (!win.isDestroyed()) {
@@ -706,6 +707,53 @@ export async function registerIpcHandlers(mainWindow: BrowserWindow | null): Pro
 
   ipcMain.handle(IpcChannels.OAUTH_IN_APP_LOGIN_STATUS, async (): Promise<boolean> => {
     return oauthManager.isInAppLoginOpen()
+  })
+
+  // Auto-fill credentials: open in-app browser to capture token + cookies, then validate and save
+  ipcMain.handle(IpcChannels.ACCOUNTS_AUTO_FILL_CREDENTIALS, async (_, data: {
+    providerId: string
+    providerType: ProviderVendor
+    editingAccountId?: string
+  }) => {
+    const { providerId, providerType, editingAccountId } = data
+    try {
+      console.log(`[AutoFill] Starting credential capture for ${providerId}`)
+      
+      const result = await oauthManager.startInAppLogin(providerId, providerType as ProviderType, undefined, 'none')
+      
+      if (!result.success || !result.credentials) {
+        console.log('[AutoFill] Credential capture failed:', result.error)
+        return { success: false, error: result.error || 'Credential capture failed' }
+      }
+
+      // Validate captured credentials
+      const validation = await oauthManager.validateToken(providerId, providerType as ProviderType, result.credentials)
+      
+      if (!validation.valid) {
+        console.log('[AutoFill] Validation failed:', validation.error)
+        return { success: false, error: validation.error || 'Token validation failed' }
+      }
+
+      // If editing an existing account, update it
+      if (editingAccountId) {
+        const account = AccountManager.getById(editingAccountId)
+        if (account) {
+          const updatedCreds = { ...account.credentials, ...result.credentials }
+          AccountManager.update(editingAccountId, { credentials: updatedCreds })
+          console.log('[AutoFill] Updated existing account', editingAccountId)
+        }
+      }
+
+      console.log('[AutoFill] Success, captured keys:', Object.keys(result.credentials))
+      return {
+        success: true,
+        credentials: result.credentials,
+        userInfo: validation.accountInfo,
+      }
+    } catch (error) {
+      console.error('[AutoFill] Error:', error)
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
+    }
   })
 
   ipcMain.handle(IpcChannels.OAUTH_VALIDATE_TOKEN, async (_, data: { providerId: string, providerType: ProviderVendor, credentials: Record<string, string> }) => {

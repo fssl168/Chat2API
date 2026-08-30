@@ -77,7 +77,7 @@ export function createAccount(
   return {
     providerId,
     credentials,
-    name: accountInfo?.name,
+    name: accountInfo?.name || '',
     email: accountInfo?.email,
     userId: accountInfo?.userId,
     status: 'active',
@@ -120,7 +120,7 @@ export function getMaskedCredentials(
   const masked: Record<string, string> = {}
 
   for (const [key, value] of Object.entries(credentials)) {
-    const field = provider.credentialFields?.find(f => f.name === key)
+    const field = provider.credentialFields?.find((f: any) => f.name === key)
     if (field?.type === 'password') {
       masked[key] = maskCredential(value)
     } else {

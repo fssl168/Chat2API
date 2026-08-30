@@ -13,11 +13,13 @@ import {
   AdapterConfig,
   OAuthCallbackData,
 } from '../types'
+import { randomUaProfile } from '../../proxy/utils/uaPool'
 
 const ZAI_API_BASE = 'https://chat.z.ai'
-const X_FE_VERSION = 'prod-fe-1.1.37'
+const X_FE_VERSION = 'prod-fe-1.1.92'
 const ZAI_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36'
 
+// UA randomized per-request via randomUaProfile()
 const FAKE_HEADERS = {
   Accept: '*/*',
   'Accept-Encoding': 'gzip, deflate, br, zstd',
@@ -25,17 +27,27 @@ const FAKE_HEADERS = {
   'Cache-Control': 'no-cache',
   Origin: ZAI_API_BASE,
   Pragma: 'no-cache',
-  'Sec-Ch-Ua': '"Not/A)Brand";v="99", "Chromium";v="148"',
-  'Sec-Ch-Ua-Mobile': '?0',
-  'Sec-Ch-Ua-Platform': '"macOS"',
   'Sec-Fetch-Dest': 'empty',
   'Sec-Fetch-Mode': 'cors',
   'Sec-Fetch-Site': 'same-origin',
-  'User-Agent': ZAI_USER_AGENT,
   'X-FE-Version': X_FE_VERSION,
   'X-Region': 'domestic',
 }
 
+
+
+
+function buildZaiOauthHeaders(extra?: Record<string, string>): Record<string, string> {
+  const { userAgent, secChUa, secChUaPlatform } = randomUaProfile()
+  return {
+    ...buildZaiOauthHeaders(),
+    'Sec-Ch-Ua': secChUa,
+    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Platform': secChUaPlatform,
+    'User-Agent': userAgent,
+    ...(extra || {}),
+  }
+}
 export class ZaiAdapter extends BaseOAuthAdapter {
   constructor(config: AdapterConfig) {
     super({

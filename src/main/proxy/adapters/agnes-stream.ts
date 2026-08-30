@@ -28,7 +28,7 @@ interface StreamChunk {
 
 export class AgnesStreamHandler {
   private model: string
-  private messageId: string
+  private messageId: string = ""
   private created: number
   private isFirstChunk: boolean = true
   private toolStreamParser?: ToolStreamParser
@@ -164,7 +164,7 @@ export class AgnesStreamHandler {
     const finalChunk = this.createBaseChunk()
     // Override finish_reason on the final chunk
     if (finalChunk.choices && finalChunk.choices[0]) {
-      finalChunk.choices[0].finish_reason = finishReason
+      (finalChunk.choices[0] as any).finish_reason = finishReason
     }
     transStream.write(`data: ${JSON.stringify(finalChunk)}\n\n`)
     transStream.write('data: [DONE]\n\n')

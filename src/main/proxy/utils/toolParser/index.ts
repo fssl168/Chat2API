@@ -35,7 +35,7 @@ export interface StreamParseResult {
  */
 export function parseToolCalls(content: string): ToolParseResult {
   if (!content) {
-    return { content: '', toolCalls: [], format: 'unknown', rawMatches: [] }
+    return { content: '', toolCalls: [], format: 'native', rawMatches: [] }
   }
 
   // 检测格式
@@ -59,7 +59,7 @@ export function parseToolCalls(content: string): ToolParseResult {
       result = parseJsonFormat(content)
       break
     default:
-      return { content, toolCalls: [], format: 'unknown', rawMatches: [] }
+      return { content, toolCalls: [], format: 'native', rawMatches: [] }
   }
 
   return { ...result, format }
@@ -155,8 +155,8 @@ export function parseToolCallsStream(
       for (const tc of toolCalls) {
         tc.index = state.toolCallIndex++
 
-        const rawText = tc.rawText
-        delete tc.rawText
+        const rawText = (tc as any).rawText
+        delete (tc as any).rawText
 
         const toolCallData = {
           delta: {
@@ -235,7 +235,7 @@ export function flushToolCallBuffer(
   if (toolCalls.length > 0) {
     for (const tc of toolCalls) {
       tc.index = state.toolCallIndex++
-      delete tc.rawText
+      delete (tc as any).rawText
       result.push({
         delta: { tool_calls: [tc] },
         finish_reason: null

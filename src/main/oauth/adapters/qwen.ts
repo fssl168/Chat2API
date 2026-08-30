@@ -14,6 +14,7 @@ import {
   AdapterConfig,
   OAuthCallbackData,
 } from '../types'
+import { randomUaProfile } from '../../proxy/utils/uaPool'
 
 const QWEN_API_BASE = 'https://chat2-api.qianwen.com'
 const QWEN_WEB_BASE = 'https://www.qianwen.com'
@@ -25,14 +26,22 @@ const DEFAULT_HEADERS = {
   'Cache-Control': 'no-cache',
   Origin: QWEN_WEB_BASE,
   Pragma: 'no-cache',
-  'Sec-Ch-Ua': '"Chromium";v="145", "Not(A:Brand";v="24", "Google Chrome";v="145"',
-  'Sec-Ch-Ua-Mobile': '?0',
-  'Sec-Ch-Ua-Platform': '"macOS"',
   'Sec-Fetch-Dest': 'empty',
   'Sec-Fetch-Mode': 'cors',
   'Sec-Fetch-Site': 'same-site',
   Referer: `${QWEN_WEB_BASE}/`,
-  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
+}
+
+
+function buildQwenOauthHeaders(extra?: Record<string, string>): Record<string, string> {
+  const { userAgent, secChUa, secChUaPlatform } = randomUaProfile()
+  return {
+    ...DEFAULT_HEADERS,
+    'Sec-Ch-Ua': secChUa,
+    'Sec-Ch-Ua-Platform': secChUaPlatform,
+    'User-Agent': userAgent,
+    ...(extra || {}),
+  }
 }
 
 export class QwenAdapter extends BaseOAuthAdapter {
@@ -133,7 +142,7 @@ export class QwenAdapter extends BaseOAuthAdapter {
         {
           headers: {
             Cookie: this.generateCookie(ticket),
-            ...DEFAULT_HEADERS,
+            ...buildQwenOauthHeaders(),
             'X-Platform': 'pc_tongyi',
             'X-DeviceId': '5b68c267-cd8e-fd0e-148a-18345bc9a104',
           },
@@ -192,7 +201,7 @@ export class QwenAdapter extends BaseOAuthAdapter {
         {
           headers: {
             Cookie: this.generateCookie(ticket),
-            ...DEFAULT_HEADERS,
+            ...buildQwenOauthHeaders(),
             'X-Platform': 'pc_tongyi',
             'X-DeviceId': '5b68c267-cd8e-fd0e-148a-18345bc9a104',
           },
@@ -231,7 +240,7 @@ export class QwenAdapter extends BaseOAuthAdapter {
         {
           headers: {
             Cookie: this.generateCookie(ticket),
-            ...DEFAULT_HEADERS,
+            ...buildQwenOauthHeaders(),
             'X-Platform': 'pc_tongyi',
             'X-DeviceId': '5b68c267-cd8e-fd0e-148a-18345bc9a104',
           },

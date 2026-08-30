@@ -14,6 +14,7 @@ import {
   AdapterConfig,
   OAuthCallbackData,
 } from '../types'
+import { randomUaProfile } from '../../proxy/utils/uaPool'
 
 const DEEPSEEK_API_BASE = 'https://chat.deepseek.com'
 
@@ -25,17 +26,25 @@ const FAKE_HEADERS = {
   Pragma: 'no-cache',
   Priority: 'u=1, i',
   Referer: `${DEEPSEEK_API_BASE}/`,
-  'Sec-Ch-Ua': '"Chromium";v="134", "Not:A-Brand";v="24", "Google Chrome";v="134"',
-  'Sec-Ch-Ua-Mobile': '?0',
-  'Sec-Ch-Ua-Platform': '"macOS"',
   'Sec-Fetch-Dest': 'empty',
   'Sec-Fetch-Mode': 'cors',
   'Sec-Fetch-Site': 'same-origin',
-  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
   'X-App-Version': '20241129.1',
   'X-Client-Locale': 'zh-CN',
   'X-Client-Platform': 'web',
   'X-Client-Version': '1.6.1',
+}
+
+
+function buildDeepSeekOauthHeaders(extra?: Record<string, string>): Record<string, string> {
+  const { userAgent, secChUa, secChUaPlatform } = randomUaProfile()
+  return {
+    ...FAKE_HEADERS,
+    'Sec-Ch-Ua': secChUa,
+    'Sec-Ch-Ua-Platform': secChUaPlatform,
+    'User-Agent': userAgent,
+    ...(extra || {}),
+  }
 }
 
 export class DeepSeekAdapter extends BaseOAuthAdapter {
@@ -43,7 +52,7 @@ export class DeepSeekAdapter extends BaseOAuthAdapter {
     super({
       ...config,
       providerType: 'deepseek',
-      authMethods: ['manual'],
+      authMethods: ['manual', 'cookie'],
       loginUrl: DEEPSEEK_API_BASE,
       apiUrl: DEEPSEEK_API_BASE,
     })
@@ -54,11 +63,11 @@ export class DeepSeekAdapter extends BaseOAuthAdapter {
    */
   async startLogin(options: OAuthOptions): Promise<OAuthResult> {
     this.emitProgress('pending', 'Opening browser...')
-    
+
     try {
       await shell.openExternal(DEEPSEEK_API_BASE)
       this.emitProgress('pending', 'Please log in via browser and enter Token manually')
-      
+
       return {
         success: false,
         providerId: options.providerId,
@@ -69,10 +78,63 @@ export class DeepSeekAdapter extends BaseOAuthAdapter {
       console.error('[DeepSeek] startLogin error:', error)
       const errorMessage = error instanceof Error ? error.message : 'Failed to open browser'
       this.emitProgress('error', errorMessage)
-      
+
       return {
         success: false,
         providerId: options.providerId,
+        providerType: 'deepseek',
+        error: errorMessage,
+      }
+    }
+  }
+
+  /**
+   * Login with cookies extracted from in-app browser
+   */
+  async loginWithCookies(providerId: string, cookies: Record<string, string>): Promise<OAuthResult> {
+    this.emitProgress('pending', 'Validating cookies...')
+
+    const userToken = cookies['userToken']
+    if (!userToken) {
+      return {
+        success: false,
+        providerId,
+        providerType: 'deepseek',
+        error: 'No userToken found in cookies. Please ensure you are logged in at chat.deepseek.com',
+      }
+    }
+
+    // Use userToken for validation, save all cookies
+    const validationCredentials = { token: userToken }
+    try {
+      const validation = await this.validateToken(validationCredentials)
+      if (!validation.valid) {
+        return {
+          success: false,
+          providerId,
+          providerType: 'deepseek',
+          error: validation.error || 'Cookie validation failed',
+        }
+      }
+
+      this.emitProgress('success', 'Cookie validation successful')
+
+      return {
+        success: true,
+        providerId,
+        providerType: 'deepseek',
+        credentials: {
+          token: userToken,
+          cookies: cookies as any,
+        },
+        accountInfo: validation.accountInfo,
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Validation failed'
+      this.emitProgress('error', errorMessage)
+      return {
+        success: false,
+        providerId,
         providerType: 'deepseek',
         error: errorMessage,
       }
@@ -143,7 +205,7 @@ export class DeepSeekAdapter extends BaseOAuthAdapter {
       const response = await axios.get(`${DEEPSEEK_API_BASE}/api/v0/users/current`, {
         headers: {
           Authorization: `Bearer ${token}`,
-          ...FAKE_HEADERS,
+          ...buildDeepSeekOauthHeaders(),
         },
         timeout: 15000,
         validateStatus: () => true,
@@ -200,7 +262,7 @@ export class DeepSeekAdapter extends BaseOAuthAdapter {
       const response = await axios.get(`${DEEPSEEK_API_BASE}/api/v0/users/current`, {
         headers: {
           Authorization: `Bearer ${token}`,
-          ...FAKE_HEADERS,
+          ...buildDeepSeekOauthHeaders(),
         },
         timeout: 15000,
         validateStatus: () => true,

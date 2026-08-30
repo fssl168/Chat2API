@@ -269,6 +269,7 @@ router.post('/completions', async (ctx: Context) => {
       actualModel,
       latency,
       isStream: request.stream,
+      ...(result.wafChallenge !== undefined && result.wafChallenge > 0 ? { wafChallenge: result.wafChallenge } : {}),
     })
 
     const userInput = extractUserInput(request.messages)

@@ -115,6 +115,14 @@ export interface Account {
   dailyLimit?: number
   /** Today used count */
   todayUsed?: number
+  /** Last status check time (timestamp) */
+  lastStatusCheck?: number
+  /** User ID from provider (e.g. minimax userId) */
+  userId?: string
+  /** Usage count */
+  usageCount?: number
+  /** Metadata from provider response */
+  metadata?: Record<string, unknown>
 }
 
 /**
@@ -154,6 +162,8 @@ export interface Provider {
   status?: ProviderStatus
   /** Last status check time */
   lastStatusCheck?: number
+  /** Credential field configuration */
+  credentialFields?: CredentialField[]
 }
 
 /**
@@ -219,6 +229,10 @@ export interface AppConfig {
   managementApi: ManagementApiConfig
   /** Context management configuration */
   contextManagement: ContextManagementConfig
+  /** Enable Playwright stealth browser for WAF challenge bypass */
+  enableStealth: boolean
+  /** UI language */
+  language: 'zh-CN' | 'en-US'
 }
 
 /**
@@ -815,6 +829,8 @@ export const DEFAULT_CONFIG: AppConfig = {
   toolPromptConfig: undefined,
   managementApi: DEFAULT_MANAGEMENT_API_CONFIG,
   contextManagement: DEFAULT_CONTEXT_MANAGEMENT_CONFIG,
+  enableStealth: false,
+  language: 'zh-CN',
 }
 
 /**

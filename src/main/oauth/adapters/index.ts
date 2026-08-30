@@ -66,7 +66,7 @@ export function createAdapter(
 export function getSupportedAuthMethods(providerType: ProviderType): string[] {
   switch (providerType) {
     case 'deepseek':
-      return ['manual']
+      return ['manual', 'cookie']
     case 'glm':
       return ['manual']
     case 'kimi':

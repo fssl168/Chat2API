@@ -12,28 +12,9 @@ import { getDeepSeekHash } from '../../lib/challenge'
 import type { Account, Provider } from '../../store/types'
 import { resolveDeepSeekChatOptions } from './providerModelOptions'
 import { getProviderToolProfile } from '../toolCalling/providerProfiles'
+import { randomUaProfile } from '../utils/uaPool'
 
 const DEEPSEEK_API_BASE = 'https://chat.deepseek.com/api'
-
-const FAKE_HEADERS = {
-  Accept: '*/*',
-  'Accept-Encoding': 'gzip, deflate, br, zstd',
-  'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
-  Origin: 'https://chat.deepseek.com',
-  Referer: 'https://chat.deepseek.com/',
-  'Sec-Ch-Ua': '"Not/A)Brand";v="99", "Chromium";v="148"',
-  'Sec-Ch-Ua-Mobile': '?0',
-  'Sec-Ch-Ua-Platform': '"macOS"',
-  'Sec-Fetch-Dest': 'empty',
-  'Sec-Fetch-Mode': 'cors',
-  'Sec-Fetch-Site': 'same-origin',
-  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36',
-  'X-App-Version': '2.0.0',
-  'X-Client-Locale': 'zh_CN',
-  'X-Client-Platform': 'web',
-  'x-Client-Timezone-Offset': '28800',
-  'X-Client-Version': '2.0.0',
-}
 
 interface TokenInfo {
   accessToken: string
@@ -96,7 +77,7 @@ function uuid(): string {
 
 function generateCookie(): string {
   const timestamp = Date.now()
-  return `intercom-HWWAFSESTIME=${timestamp}; HWWAFSESID=${generateRandomString(18, 'hex')}; Hm_lvt_${uuid(false)}=${Math.floor(timestamp / 1000)},${Math.floor(timestamp / 1000)},${Math.floor(timestamp / 1000)}; Hm_lpvt_${uuid(false)}=${Math.floor(timestamp / 1000)}; _frid=${uuid(false)}; _fr_ssid=${uuid(false)}; _fr_pvid=${uuid(false)}`
+  return `intercom-HWWAFSESTIME=${timestamp}; HWWAFSESID=${generateRandomString(18, 'hex')}; Hm_lvt_${uuid()}=${Math.floor(timestamp / 1000)},${Math.floor(timestamp / 1000)},${Math.floor(timestamp / 1000)}; Hm_lpvt_${uuid()}=${Math.floor(timestamp / 1000)}; _frid=${uuid()}; _fr_ssid=${uuid()}; _fr_pvid=${uuid()}`
 }
 
 function unixTimestamp(): number {
@@ -109,6 +90,19 @@ export class DeepSeekAdapter {
   private token: string
   private cookies: string = ''
   private session: Session | null = null
+  /** Per-instance randomized browser headers (UA + Sec-Ch-Ua) */
+  private readonly headers: Record<string, string>
+
+  /**
+   * Convert browser cookie format (name=value; name2=value2) to curl-cffi Netscape format
+   */
+  private browserCookiesToNetscape(cookieDict: Record<string, string>, domain: string): string[] {
+    const lines: string[] = ['# Netscape HTTP Cookie File']
+    for (const [name, value] of Object.entries(cookieDict)) {
+      lines.push(`#HttpOnly_${domain}\tTRUE\t/\tFALSE\t0\t${name}\t${value}`)
+    }
+    return lines
+  }
 
   constructor(provider: Provider, account: Account) {
     this.provider = provider
@@ -116,18 +110,73 @@ export class DeepSeekAdapter {
     console.log('[DeepSeek] Account credentials:', JSON.stringify(account.credentials, null, 2))
     this.token = account.credentials.token || account.credentials.apiKey || account.credentials.refreshToken || ''
     console.log('[DeepSeek] Using token:', this.token.substring(0, 20) + '...')
-    // curl-cffi with TLS impersonation (JA3/JA4 fingerprint maintained), axios fallback
-    try {
-      this.session = new Session({
-        impersonate: 'chrome148',
-        headers: FAKE_HEADERS,
-        timeout: 30,
-        followRedirects: true,
-      })
-      console.log('[DeepSeek] curl-cffi Session initialized (TLS impersonation active)')
-    } catch (e) {
-      console.warn('[DeepSeek] curl-cffi Session failed, falling back to axios:', e)
-      this.session = null
+
+    // Randomize UA per adapter instance to reduce fingerprint consistency
+    const uaProfile = randomUaProfile()
+    this.headers = {
+      Accept: '*/*',
+      'Accept-Encoding': 'gzip, deflate, br, zstd',
+      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
+      Origin: 'https://chat.deepseek.com',
+      Referer: 'https://chat.deepseek.com/',
+      'Sec-Ch-Ua': uaProfile.secChUa,
+      'Sec-Ch-Ua-Mobile': '?0',
+      'Sec-Ch-Ua-Platform': uaProfile.secChUaPlatform,
+      'Sec-Fetch-Dest': 'empty',
+      'Sec-Fetch-Mode': 'cors',
+      'Sec-Fetch-Site': 'same-origin',
+      'User-Agent': uaProfile.userAgent,
+      'X-App-Version': '2.0.0',
+      'X-Client-Locale': 'zh_CN',
+      'X-Client-Platform': 'web',
+      'x-Client-Timezone-Offset': '28800',
+      'X-Client-Version': '2.0.0',
+    }
+
+    // Load saved cookies from credentials into curl_cffi Session for TLS impersonation
+    const storedCookies = account.credentials.cookies as unknown as Record<string, string> | undefined
+    if (storedCookies && Object.keys(storedCookies).length > 0) {
+      const netscapeFormat = this.browserCookiesToNetscape(storedCookies, '.deepseek.com')
+      console.log('[DeepSeek] Loading', Object.keys(storedCookies).length, 'cookies into curl_cffi Session')
+      try {
+        this.session = new Session({
+          impersonate: 'chrome148',
+          headers: this.headers,
+          timeout: 30,
+          followRedirects: true,
+          cookies: netscapeFormat,
+        })
+        console.log('[DeepSeek] curl-cffi Session initialized with cookies (TLS impersonation active)')
+      } catch (e) {
+        console.warn('[DeepSeek] curl-cffi Session with cookies failed, retrying without:', e)
+        try {
+          this.session = new Session({
+            impersonate: 'chrome148',
+            headers: this.headers,
+            timeout: 30,
+            followRedirects: true,
+          })
+          this.session.importCookies(netscapeFormat)
+          console.log('[DeepSeek] curl-cffi Session initialized (cookies imported after creation)')
+        } catch (e2) {
+          console.warn('[DeepSeek] curl-cffi Session failed entirely, falling back to axios:', e2)
+          this.session = null
+        }
+      }
+    } else {
+      // curl-cffi with TLS impersonation (JA3/JA4 fingerprint maintained), axios fallback
+      try {
+        this.session = new Session({
+          impersonate: 'chrome148',
+          headers: this.headers,
+          timeout: 30,
+          followRedirects: true,
+        })
+        console.log('[DeepSeek] curl-cffi Session initialized (TLS impersonation active)')
+      } catch (e) {
+        console.warn('[DeepSeek] curl-cffi Session failed, falling back to axios:', e)
+        this.session = null
+      }
     }
   }
 
@@ -145,13 +194,13 @@ export class DeepSeekAdapter {
     
     let result: any
     if (this.session) {
-      const res = await this.session.get(`${DEEPSEEK_API_BASE}/v0/users/current`, {
+      const res = await (this.session as any).get(`${DEEPSEEK_API_BASE}/v0/users/current`, {
         headers: { Authorization: `Bearer ${this.token}` },
       })
-      result = { status: res.status || 200, data: res.json ? res.json() : res.body ? JSON.parse(res.body.toString()) : {} }
+      result = { status: res.status, data: res.json() }
     } else {
       result = await axios.get(`${DEEPSEEK_API_BASE}/v0/users/current`, {
-        headers: { Authorization: `Bearer ${this.token}`, ...FAKE_HEADERS },
+        headers: { Authorization: `Bearer ${this.token}`, ...this.headers },
         timeout: 15000,
         validateStatus: () => true,
       })
@@ -196,10 +245,11 @@ export class DeepSeekAdapter {
     const token = await this.acquireToken()
     let result: any
     if (this.session) {
-      const res = await this.session.post(`${DEEPSEEK_API_BASE}/v0/chat_session/create`, {}, {
+      const res = await (this.session as any).post(`${DEEPSEEK_API_BASE}/v0/chat_session/create`, {
+        data: {},
         headers: { Authorization: `Bearer ${token}` },
       })
-      result = { status: res.status || 200, data: res.json ? res.json() : res.body ? JSON.parse(res.body.toString()) : {} }
+      result = { status: res.status, data: res.json() }
     } else {
       result = await axios.post(
         `${DEEPSEEK_API_BASE}/v0/chat_session/create`,
@@ -207,7 +257,7 @@ export class DeepSeekAdapter {
         {
           headers: {
             Authorization: `Bearer ${token}`,
-            ...FAKE_HEADERS,
+            ...this.headers,
             Cookie: generateCookie(),
           },
           timeout: 15000,
@@ -235,10 +285,11 @@ export class DeepSeekAdapter {
       const token = await this.acquireToken()
       let result: any
     if (this.session) {
-      const res = await this.session.post(`${DEEPSEEK_API_BASE}/v0/chat_session/delete`, { chat_session_id: sessionId }, {
+      const res = await (this.session as any).post(`${DEEPSEEK_API_BASE}/v0/chat_session/delete`, {
+        data: { chat_session_id: sessionId },
         headers: { Authorization: `Bearer ${token}` },
       })
-      result = { status: res.status || 200, data: res.json ? res.json() : res.body ? JSON.parse(res.body.toString()) : {} }
+      result = { status: res.status, data: res.json() }
     } else {
       result = await axios.post(
         `${DEEPSEEK_API_BASE}/v0/chat_session/delete`,
@@ -246,7 +297,7 @@ export class DeepSeekAdapter {
         {
           headers: {
             Authorization: `Bearer ${token}`,
-            ...FAKE_HEADERS,
+            ...this.headers,
           },
           timeout: 15000,
           validateStatus: () => true,
@@ -274,10 +325,11 @@ export class DeepSeekAdapter {
     const token = await this.acquireToken()
     let result: any
     if (this.session) {
-      const res = await this.session.post(`${DEEPSEEK_API_BASE}/v0/chat/create_pow_challenge`, { target_path: targetPath }, {
+      const res = await (this.session as any).post(`${DEEPSEEK_API_BASE}/v0/chat/create_pow_challenge`, {
+        data: { target_path: targetPath },
         headers: { Authorization: `Bearer ${token}` },
       })
-      result = { status: res.status || 200, data: res.json ? res.json() : res.body ? JSON.parse(res.body.toString()) : {} }
+      result = { status: res.status, data: res.json() }
     } else {
       result = await axios.post(
         `${DEEPSEEK_API_BASE}/v0/chat/create_pow_challenge`,
@@ -285,7 +337,7 @@ export class DeepSeekAdapter {
         {
           headers: {
             Authorization: `Bearer ${token}`,
-            ...FAKE_HEADERS,
+            ...this.headers,
           },
           timeout: 15000,
           validateStatus: () => true,
@@ -453,31 +505,94 @@ export class DeepSeekAdapter {
       console.log('[DeepSeek] Reasoning mode enabled, effort:', request.reasoning_effort)
     }
 
-    const response = await axios.post(
-      `${DEEPSEEK_API_BASE}/v0/chat/completion`,
-      {
-        chat_session_id: sessionId,
-        parent_message_id: null,
-        prompt,
-        model_type: modelType,
-        ref_file_ids: [],
-        search_enabled: searchEnabled,
-        thinking_enabled: thinkingEnabled,
-        preempt: false,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          ...FAKE_HEADERS,
-          Referer: `https://chat.deepseek.com/a/chat/s/${sessionId}`,
-          Cookie: generateCookie(),
-          'X-Ds-Pow-Response': challengeAnswer,
-        },
-        timeout: 120000,
-        validateStatus: () => true,
-        responseType: 'stream',
+    // Build Cookie header from stored cookies (if any) + generated WAF cookies
+    const cookieParts = generateCookie().split('; ').filter(Boolean)
+    const storedCookies = this.account.credentials.cookies as unknown as Record<string, string> | undefined
+    if (storedCookies) {
+      for (const [name, value] of Object.entries(storedCookies)) {
+        cookieParts.unshift(`${name}=${value}`)
       }
-    )
+    }
+    const cookieHeader = cookieParts.join('; ')
+
+    let response: AxiosResponse | null = null
+
+    if (this.session) {
+      // Use curl_cffi Session with TLS impersonation for all requests
+      try {
+        const res = await (this.session as any).post(
+          `${DEEPSEEK_API_BASE}/v0/chat/completion`,
+          {
+            data: {
+              chat_session_id: sessionId,
+              parent_message_id: null,
+              prompt,
+              model_type: modelType,
+              ref_file_ids: [],
+              search_enabled: searchEnabled,
+              thinking_enabled: thinkingEnabled,
+              preempt: false,
+            },
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Referer: `https://chat.deepseek.com/a/chat/s/${sessionId}`,
+              'Cookie': cookieHeader,
+              'X-Ds-Pow-Response': challengeAnswer,
+            },
+          }
+        )
+        // Wrap curl-cffi Response into AxiosResponse-like shape for stream handler
+        // Response API: content (Buffer), text(), json(), stream() — no `body` property
+        const headerObj: Record<string, string> = {}
+        res.headers.forEach((value: string, key: string) => {
+          headerObj[key] = value
+        })
+        response = {
+          status: res.status,
+          data: res.stream(),
+          headers: headerObj,
+        } as unknown as AxiosResponse
+        console.log('[DeepSeek] Request completed via curl-cffi (TLS impersonation)')
+      } catch (e) {
+        console.warn('[DeepSeek] curl-cffi post failed, falling back to axios:', e)
+        this.session = null
+        // Fall through to axios below
+      }
+    }
+
+    if (!response) {
+      // Fallback to axios without TLS impersonation
+      response = await axios.post(
+        `${DEEPSEEK_API_BASE}/v0/chat/completion`,
+        {
+          chat_session_id: sessionId,
+          parent_message_id: null,
+          prompt,
+          model_type: modelType,
+          ref_file_ids: [],
+          search_enabled: searchEnabled,
+          thinking_enabled: thinkingEnabled,
+          preempt: false,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            ...this.headers,
+            Referer: `https://chat.deepseek.com/a/chat/s/${sessionId}`,
+            Cookie: cookieHeader,
+            'X-Ds-Pow-Response': challengeAnswer,
+          },
+          timeout: 120000,
+          validateStatus: () => true,
+          responseType: 'stream',
+        }
+      )
+      console.log('[DeepSeek] Request completed via axios fallback')
+    }
+
+    if (!response) {
+      throw new Error('Failed to complete DeepSeek request (both curl-cffi and axios failed)')
+    }
 
     return { response, sessionId }
   }
@@ -491,7 +606,7 @@ export class DeepSeekAdapter {
         {
           headers: {
             Authorization: `Bearer ${token}`,
-            ...FAKE_HEADERS,
+            ...this.headers,
           },
           timeout: 30000,
           validateStatus: () => true,

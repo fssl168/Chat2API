@@ -86,17 +86,18 @@ export const TOKEN_EXTRACTION_GUIDES: Record<string, TokenExtractionGuide> = {
     placeholder: 'Paste the Token obtained from MiniMax',
   },
   agnes: {
-    loginUrl: 'http://127.0.0.1:8787/admin',
+    loginUrl: 'https://app.agnes-ai.com/login',
     steps: [
-      '1. Make sure Agnes gateway is running (http://127.0.0.1:8787)',
-      '2. Open admin page at http://127.0.0.1:8787/admin',
-      '3. JWT will be automatically fetched from CredMan/jwt.txt',
-      '4. Copy JWT from the /admin/status API response',
+      '1. Open https://app.agnes-ai.com/login and log in with your account',
+      '2. Open browser DevTools (F12) → Application/Storage tab',
+      '3. Find cookies for domain app.agnes-ai.com',
+      '4. Copy the "token" cookie value (it should be a JWT starting with eyJ)',
+      '5. Paste the JWT token into the input field above',
     ],
     tokenKey: 'token',
     tokenLabel: 'JWT Token',
-    storageType: 'other',
-    placeholder: 'Paste the JWT obtained from Agnes gateway',
+    storageType: 'cookie',
+    placeholder: 'Paste the JWT obtained from app.agnes-ai.com cookie',
   },
 }
 

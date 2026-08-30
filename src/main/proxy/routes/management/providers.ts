@@ -13,7 +13,7 @@ import type {
   UpdateProviderRequest,
   ProviderStatusRequest,
   ManagementApiResponse,
-} from '../../../../../shared/types'
+} from '../../../../shared/types'
 
 const router = new Router({ prefix: '/v0/management/providers' })
 
@@ -101,7 +101,7 @@ router.post('/', async (ctx: Context) => {
       description: request.description,
       icon: request.icon,
       supportedModels: request.supportedModels,
-    })
+    } as any)
 
     ctx.status = 201
     ctx.set('Content-Type', 'application/json')

@@ -11,6 +11,7 @@ import type { ChatMessage } from '../types.ts'
 import { ToolStreamParser } from '../toolCalling/ToolStreamParser.ts'
 import type { ToolCallingPlan } from '../toolCalling/types.ts'
 import { getProviderToolProfile } from '../toolCalling/providerProfiles.ts'
+import { randomUaProfile } from '../utils/uaPool'
 
 const MIMO_API_BASE = 'https://aistudio.xiaomimimo.com'
 
@@ -352,9 +353,12 @@ export class MimoAdapter {
       'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
       'Cache-Control': 'no-cache',
       Pragma: 'no-cache',
-      'Sec-Ch-Ua': '"Chromium";v="144", "Not(A:Brand";v="8", "Google Chrome";v="144"',
-      'Sec-Ch-Ua-Mobile': '?0',
-      'Sec-Ch-Ua-Platform': '"Windows"',
+      ...randomUaProfile().secChUa && {
+        'Sec-Ch-Ua': randomUaProfile().secChUa,
+        'Sec-Ch-Ua-Mobile': '?0',
+        'Sec-Ch-Ua-Platform': randomUaProfile().secChUaPlatform,
+        'User-Agent': randomUaProfile().userAgent,
+      },
       'Sec-Fetch-Dest': 'empty',
       'Sec-Fetch-Mode': 'cors',
       'Sec-Fetch-Site': 'same-origin',

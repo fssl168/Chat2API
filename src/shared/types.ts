@@ -30,10 +30,25 @@ export type LoadBalanceStrategy = 'round-robin' | 'fill-first' | 'failover'
 
 export type Theme = 'light' | 'dark' | 'system'
 
-export type {
+import type {
   LegacyToolPromptConfig,
   ToolCallingConfig,
 } from './toolCalling'
+
+// Re-export for consumers
+export type { LegacyToolPromptConfig, ToolCallingConfig } from './toolCalling'
+
+export interface SessionRecord {
+  id: string
+  providerId: string
+  accountId: string
+  sessionType: 'chat' | 'agent'
+  messages: Array<{ role: string; content: string | any[]; timestamp?: number }>
+  createdAt: number
+  lastActiveAt: number
+  status: 'active' | 'expired' | 'deleted'
+  model?: string
+}
 
 export interface Account {
   id: string
@@ -111,6 +126,7 @@ export interface AppConfig {
   managementApi: ManagementApiConfig
   contextManagement?: unknown
   language: 'zh-CN' | 'en-US'
+  enableStealth?: boolean
 }
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
@@ -366,6 +382,9 @@ export interface ConfigUpdateRequest {
   toolCallingConfig?: Partial<ToolCallingConfig>
   toolPromptConfig?: LegacyToolPromptConfig
   managementApi?: ManagementApiConfig
+  contextManagement?: unknown
+  language?: 'zh-CN' | 'en-US'
+  enableStealth?: boolean
 }
 
 export interface EffectiveModel {

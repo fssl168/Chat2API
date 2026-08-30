@@ -13,25 +13,9 @@ import { createKimiChatPayload, encodeKimiGrpcFrame } from './providerModelOptio
 import { getProviderToolProfile } from '../toolCalling/providerProfiles'
 import { ToolStreamParser } from '../toolCalling/ToolStreamParser'
 import type { ToolCallingPlan } from '../toolCalling/types'
+import { randomUaProfile } from '../utils/uaPool'
 
 const KIMI_API_BASE = 'https://www.kimi.com'
-
-const FAKE_HEADERS: Record<string, string> = {
-  Accept: '*/*',
-  'Accept-Encoding': 'gzip, deflate, br, zstd',
-  'Accept-Language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
-  'Cache-Control': 'no-cache',
-  Pragma: 'no-cache',
-  Origin: KIMI_API_BASE,
-  'Sec-Ch-Ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
-  'Sec-Ch-Ua-Mobile': '?0',
-  'Sec-Ch-Ua-Platform': '"Windows"',
-  'Sec-Fetch-Dest': 'empty',
-  'Sec-Fetch-Mode': 'cors',
-  'Sec-Fetch-Site': 'same-origin',
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-  Priority: 'u=1, i',
-}
 
 interface TokenInfo {
   accessToken: string
@@ -111,11 +95,30 @@ export class KimiAdapter {
   private provider: Provider
   private account: Account
   private token: string
+  /** Per-instance randomized browser headers (UA + Sec-Ch-Ua) */
+  private readonly headers: Record<string, string>
 
   constructor(provider: Provider, account: Account) {
     this.provider = provider
     this.account = account
     this.token = account.credentials.token || account.credentials.refreshToken || ''
+    const uaProfile = randomUaProfile()
+    this.headers = {
+      Accept: '*/*',
+      'Accept-Encoding': 'gzip, deflate, br, zstd',
+      'Accept-Language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+      'Cache-Control': 'no-cache',
+      Pragma: 'no-cache',
+      Origin: KIMI_API_BASE,
+      'Sec-Ch-Ua': uaProfile.secChUa,
+      'Sec-Ch-Ua-Mobile': '?0',
+      'Sec-Ch-Ua-Platform': uaProfile.secChUaPlatform,
+      'Sec-Fetch-Dest': 'empty',
+      'Sec-Fetch-Mode': 'cors',
+      'Sec-Fetch-Site': 'same-origin',
+      'User-Agent': uaProfile.userAgent,
+      Priority: 'u=1, i',
+    }
   }
 
   private async acquireToken(): Promise<{ accessToken: string; userId: string }> {
@@ -308,7 +311,7 @@ export class KimiAdapter {
     // Determine if thinking and web search should be enabled
     // Priority: explicit parameters > model name detection
     // Use originalModel for feature detection (preserves user's intent before mapping)
-    const modelForDetection = request.originalModel || request.model
+    const modelForDetection = (request as any).originalModel || request.model
     const modelLower = modelForDetection.toLowerCase()
     
     let enableThinking = request.enableThinking ?? false
@@ -341,7 +344,7 @@ export class KimiAdapter {
         headers: {
           Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/connect+json',
-          ...FAKE_HEADERS,
+          ...this.headers,
         },
         timeout: 120000,
         validateStatus: () => true,
@@ -374,7 +377,7 @@ export class KimiAdapter {
           headers: {
             Authorization: `Bearer ${accessToken}`,
             'Content-Type': 'application/json',
-            ...FAKE_HEADERS,
+            ...this.headers,
           },
           timeout: 15000,
           validateStatus: () => true,
@@ -402,7 +405,7 @@ export class KimiAdapter {
         headers: {
           Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
-          ...FAKE_HEADERS,
+          ...this.headers,
         },
         timeout: 15000,
         validateStatus: () => true,
@@ -434,7 +437,7 @@ export class KimiAdapter {
         headers: {
           Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
-          ...FAKE_HEADERS,
+          ...this.headers,
         },
         timeout: 30000,
         validateStatus: () => true,
@@ -571,7 +574,7 @@ export class KimiStreamHandler {
   async handleStream(stream: any): Promise<PassThrough> {
     const transStream = new PassThrough()
     const created = unixTimestamp()
-    let buffer = Buffer.alloc(0)
+    let buffer: any = Buffer.alloc(0)
     let sentRole = false
 
     stream.on('data', (chunk: Buffer) => {
@@ -799,7 +802,7 @@ export class KimiStreamHandler {
     const created = unixTimestamp()
     let content = ''
     let reasoningContent = ''
-    let buffer = Buffer.alloc(0)
+    let buffer: any = Buffer.alloc(0)
     let currentPhase: 'thinking' | 'answer' | undefined = undefined
 
     return new Promise((resolve, reject) => {

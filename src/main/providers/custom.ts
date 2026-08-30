@@ -1,5 +1,5 @@
 import { storeManager } from '../store/store'
-import type { Provider, AuthType } from '../../shared/types'
+import type { Provider, AuthType } from '../store/types'
 import type { CredentialField } from '../store/types'
 
 export interface CustomProviderData {
@@ -182,7 +182,7 @@ export class CustomProviderManager {
       description: data.description?.trim(),
       icon: data.icon?.trim(),
       supportedModels: data.supportedModels || [],
-      credentialFields: data.credentialFields,
+      credentialFields: data.credentialFields as any,
     }
     
     storeManager.addProvider(provider)

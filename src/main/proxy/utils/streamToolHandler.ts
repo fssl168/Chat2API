@@ -17,8 +17,7 @@ import {
   createStreamState,
   parseToolCallsStream as unifiedParseToolCallsStream,
   flushToolCallBuffer as unifiedFlushToolCallBuffer,
-  shouldBlockOutput as unifiedShouldBlockOutput,
-  createBaseChunk as unifiedCreateBaseChunk
+  shouldBlockOutput as unifiedShouldBlockOutput
 } from './toolParser/index'
 
 // Re-export StreamState type for backward compatibility

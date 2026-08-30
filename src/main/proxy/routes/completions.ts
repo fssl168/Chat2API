@@ -119,7 +119,7 @@ router.post('/completions', async (ctx: Context) => {
 
   const chatRequest = {
     model: actualModel,
-    messages: promptToMessages(request.prompt),
+    messages: promptToMessages(request.prompt) as any,
     max_tokens: request.max_tokens,
     temperature: request.temperature,
     top_p: request.top_p,
@@ -178,6 +178,7 @@ router.post('/completions', async (ctx: Context) => {
       actualModel,
       latency,
       isStream: request.stream,
+      ...(result.wafChallenge !== undefined && result.wafChallenge > 0 ? { wafChallenge: result.wafChallenge } : {}),
     })
 
     if (request.stream && result.stream) {

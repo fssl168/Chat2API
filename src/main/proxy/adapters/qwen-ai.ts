@@ -8,19 +8,17 @@ import axios, { AxiosResponse } from 'axios'
 import { PassThrough } from 'stream'
 import { createParser } from 'eventsource-parser'
 import { Account, Provider } from '../../store/types'
+import { randomUaProfile } from '../utils/uaPool'
 import { hasToolUse, parseToolUse, ToolCall } from '../promptToolUse'
 
 const QWEN_AI_BASE = 'https://chat.qwen.ai'
 
-const DEFAULT_HEADERS = {
+// Static headers shared across all requests (bx-v, bx-ua etc. are fixed per-session)
+const DEFAULT_STATIC_HEADERS = {
   Accept: 'application/json',
   'Accept-Language': 'zh-CN,zh;q=0.9',
   'Content-Type': 'application/json',
   source: 'web',
-  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
-  'sec-ch-ua': '"Not:A-Brand";v="99", "Google Chrome";v="145", "Chromium";v="145"',
-  'sec-ch-ua-mobile': '?0',
-  'sec-ch-ua-platform': '"macOS"',
   'Sec-Fetch-Dest': 'empty',
   'Sec-Fetch-Mode': 'cors',
   'Sec-Fetch-Site': 'same-origin',
@@ -30,6 +28,18 @@ const DEFAULT_HEADERS = {
   Timezone: 'Mon Feb 23 2026 22:06:02 GMT+0800',
   Version: '0.2.7',
   Origin: 'https://chat.qwen.ai',
+}
+
+function buildQwenAiHeaders(extra?: Record<string, string>): Record<string, string> {
+  const { userAgent, secChUa, secChUaPlatform } = randomUaProfile()
+  return {
+    ...DEFAULT_STATIC_HEADERS,
+    'sec-ch-ua': secChUa,
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': secChUaPlatform,
+    'User-Agent': userAgent,
+    ...(extra || {}),
+  }
 }
 
 const MODEL_ALIASES: Record<string, string> = {
@@ -97,7 +107,7 @@ export class QwenAiAdapter {
 
   private getHeaders(chatId?: string): Record<string, string> {
     const headers: Record<string, string> = {
-      ...DEFAULT_HEADERS,
+      ...buildQwenAiHeaders(),
       Authorization: `Bearer ${this.getToken()}`,
       'X-Request-Id': uuid(),
     }

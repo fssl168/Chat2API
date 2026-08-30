@@ -85,7 +85,7 @@ function maskConfig(config: AppConfig): Record<string, unknown> {
 
 router.get('/', async (ctx: Context) => {
   try {
-    const config = ConfigManager.get()
+    const config = ConfigManager.get() as any
     const maskedConfig = maskConfig(config)
 
     ctx.body = {
@@ -121,7 +121,7 @@ router.put('/', async (ctx: Context) => {
       return
     }
 
-    const validation = ConfigManager.validate(updates as Partial<AppConfig>)
+    const validation = ConfigManager.validate(updates as any)
 
     if (!validation.valid) {
       ctx.status = 400
@@ -136,7 +136,7 @@ router.put('/', async (ctx: Context) => {
       return
     }
 
-    const updatedConfig = ConfigManager.update(updates as Partial<AppConfig>)
+    const updatedConfig = ConfigManager.update(updates as any)
     const maskedConfig = maskConfig(updatedConfig)
 
     ctx.body = {
@@ -174,7 +174,7 @@ router.get('/:key', async (ctx: Context) => {
       return
     }
 
-    const value = config[key]
+    const value = (config as any)[key]
     const maskedValue = maskSensitiveValue(value, key)
 
     ctx.body = {
@@ -226,7 +226,7 @@ router.put('/:key', async (ctx: Context) => {
     }
 
     const updates = { [key]: value } as Partial<AppConfig>
-    const validation = ConfigManager.validate(updates)
+    const validation = ConfigManager.validate(updates as any)
 
     if (!validation.valid) {
       ctx.status = 400
@@ -241,8 +241,8 @@ router.put('/:key', async (ctx: Context) => {
       return
     }
 
-    const updatedConfig = ConfigManager.update(updates)
-    const maskedValue = maskSensitiveValue(updatedConfig[key], key)
+    const updatedConfig = ConfigManager.update(updates as any)
+    const maskedValue = maskSensitiveValue((updatedConfig as any)[key], key)
 
     ctx.body = {
       success: true,
