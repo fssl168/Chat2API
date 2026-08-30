@@ -165,6 +165,8 @@ export function AddAccountDialog({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isOAuthLoading, setIsOAuthLoading] = useState(false)
   const [oauthStatus, setOAuthStatus] = useState<string>('')
+  const [isAutoFilling, setIsAutoFilling] = useState(false)
+  const [autoFillStatus, setAutoFillStatus] = useState<string>('')
 
   const isEditing = !!editingAccount
   const builtinProvider = provider as BuiltinProviderConfig | null

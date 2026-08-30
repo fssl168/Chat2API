@@ -8,6 +8,7 @@ import crypto from 'crypto'
 import { PassThrough } from 'stream'
 import { createParser } from 'eventsource-parser'
 import FormData from 'form-data'
+import { Session } from 'curl-cffi-node'
 import { Account, Provider } from '../../store/types'
 import { hasToolUse, parseToolUse, ToolCall } from '../promptToolUse'
 import { parseToolCallsFromText } from '../utils/toolParser'
@@ -123,10 +124,69 @@ export class ZaiAdapter {
   private provider: Provider
   private account: Account
   private token: string | null = null
+  /** Per-instance randomized browser headers (UA + Sec-Ch-Ua), consistent across requests */
+  private readonly headers: Record<string, string>
+  /** curl-cffi Session for TLS fingerprint impersonation (JA3/JA4), axios fallback */
+  private session: Session | null = null
 
   constructor(provider: Provider, account: Account) {
     this.provider = provider
     this.account = account
+
+    // Per-instance randomized browser headers — same profile reused across this adapter's
+    // requests so the TLS fingerprint stays consistent (mirrors DeepSeek/Agnes pattern)
+    const uaProfile = randomUaProfile()
+    this.headers = {
+      ...FAKE_STATIC_HEADERS,
+      'Sec-Ch-Ua': uaProfile.secChUa,
+      'Sec-Ch-Ua-Mobile': '?0',
+      'Sec-Ch-Ua-Platform': uaProfile.secChUaPlatform,
+      'User-Agent': uaProfile.userAgent,
+    }
+
+    // curl-cffi: primary path for ESA WAF TLS-fingerprint bypass, axios fallback
+    try {
+      this.session = new Session({
+        impersonate: 'chrome148',
+        headers: this.headers,
+        timeout: 120,
+        followRedirects: true,
+      })
+      console.log('[Z.ai] curl-cffi Session initialized (TLS impersonation active)')
+    } catch (e) {
+      console.warn('[Z.ai] curl-cffi Session failed, falling back to axios only:', e)
+      this.session = null
+    }
+  }
+
+  /** Wrap curl-cffi Response into an AxiosResponse-like shape */
+  private static wrapCurlResponse(res: any, opts: { json?: boolean } = {}): AxiosResponse {
+    const headerObj: Record<string, string> = {}
+    try {
+      res.headers.forEach((value: string, key: string) => {
+        headerObj[key] = value
+      })
+    } catch {
+      // ignore header conversion errors
+    }
+    let data: unknown
+    if (opts.json) {
+      try {
+        data = res.json()
+      } catch {
+        data = res.text()
+      }
+    } else {
+      data = res.stream ? res.stream() : (res.content ?? null)
+    }
+    return {
+      status: res.status,
+      statusText: '',
+      headers: headerObj,
+      config: {},
+      request: {},
+      data,
+    } as unknown as AxiosResponse
   }
 
   private getToken(): string {
@@ -196,7 +256,7 @@ export class ZaiAdapter {
     const r = timestampMs
     const i = String(timestampMs)
     const e = `requestId,${requestId},timestamp,${timestampMs},user_id,${userId}`
-    
+
     // a = message text UTF-8 bytes
     const a = Buffer.from(messageText, 'utf-8')
     // w = base64 encode of message text
@@ -206,17 +266,20 @@ export class ZaiAdapter {
 
     // E = window index (5 minute window)
     const windowIndex = Math.floor(r / (5 * 60 * 1000))
-    
-    // Layer1: A = HMAC(secret, window_index) -> hex string
-    const derivedKeyHex = crypto.createHmac('sha256', secret).update(String(windowIndex)).digest('hex')
-    
-    // Layer2: k = HMAC(A_hex, canonical_string) -> hex string
-    const signature = crypto.createHmac('sha256', derivedKeyHex).update(canonicalString).digest('hex')
+
+    // Frontend CryptoJS: v = HmacSHA256(message=secret, key=String(windowIndex))
+    // Node: hmac(key, data) = CryptoJS HmacSHA256(key, data)
+    // So: CryptoJS HmacSHA256(message=secret, key=windowIndex) = Node hmac(key=windowIndex, data=secret)
+    const firstHmac = crypto.createHmac('sha256', String(windowIndex)).update(secret).digest()
+
+    // Frontend: signature = HmacSHA256(message=v, key=canonical)
+    // Node: hmac(key=canonical, data=v)
+    const signature = crypto.createHmac('sha256', canonicalString).update(firstHmac).digest('hex')
 
     return signature
   }
 
-  async createChat(model: string = 'glm-5', firstMessageContent: string = ''): Promise<{ chatId: string; messageId: string }> {
+  async createChat(model: string = 'glm-5.3', firstMessageContent: string = ''): Promise<{ chatId: string; messageId: string }> {
     const token = await this.ensureToken()
     const timestamp = Math.floor(Date.now() / 1000)
     const messageId = uuid()
@@ -262,21 +325,47 @@ export class ZaiAdapter {
       },
     }
     
-    const response = await axios.post(
-      `${ZAI_API_BASE}/api/v1/chats/new`,
-      requestBody,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          ...buildZaiHeaders(),
-          'Cookie': `token=${token}`,
-          Referer: `${ZAI_API_BASE}/`,
-        },
-        timeout: 15000,
-        validateStatus: () => true,
+    // curl-cffi primary (TLS impersonation), axios fallback
+    const authHeaders = {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'Cookie': `token=${token}`,
+      Referer: `${ZAI_API_BASE}/`,
+    }
+
+    let response: AxiosResponse | null = null
+    if (this.session) {
+      try {
+        const res = await this.session.post(`${ZAI_API_BASE}/api/v1/chats/new`, {
+          data: requestBody,
+          headers: { ...this.headers, ...authHeaders },
+          timeout: 15,
+        })
+        response = ZaiAdapter.wrapCurlResponse(res, { json: true })
+        console.log('[Z.ai] Create chat via curl-cffi (TLS impersonation)')
+      } catch (e) {
+        console.warn('[Z.ai] curl-cffi createChat failed, falling back to axios:', e)
       }
-    )
+    }
+
+    if (!response) {
+      response = await axios.post(
+        `${ZAI_API_BASE}/api/v1/chats/new`,
+        requestBody,
+        {
+          headers: {
+            ...authHeaders,
+            ...buildZaiHeaders(),
+          },
+          timeout: 15000,
+          validateStatus: () => true,
+        }
+      )
+    }
+
+    if (!response) {
+      throw new Error('Failed to create Z.ai chat (both curl-cffi and axios failed)')
+    }
 
     if (response.status !== 200 && response.status !== 201) {
       console.error('[Z.ai] Create chat response:', response.status, response.data)
@@ -353,28 +442,39 @@ export class ZaiAdapter {
     console.log('[Z.ai] chatCompletion called with request.model:', request.model)
     
     // Z.ai API requires specific model name casing:
-    // - GLM-5.1 and GLM-5-Turbo keep uppercase
+    // - GLM-5-Turbo keeps uppercase
     // - GLM-5V-Turbo uses lowercase "v" in the request model id
-    // - GLM-5 and GLM-4.7 use lowercase request model ids
+    // - Most models use lowercase request model ids
+    // - GLM-5.3-Flash is special: upstream id is "x-preview-l"
     const modelMapping: Record<string, string> = {
       'glm-5.3': 'glm-5.3',
-      'glm-5.3-flash': 'glm-5.3-flash',
+      'glm-5.3-flash': 'x-preview-l',
       'glm-5.2': 'glm-5.2',
-      'glm-5.1': 'GLM-5.1',
       'glm-5-turbo': 'GLM-5-Turbo',
       'glm-5v-turbo': 'GLM-5v-Turbo',
-      'glm-5': 'glm-5',
       'glm-4.7': 'glm-4.7',
+      'glm-4.6v': 'glm-4.6v',
+      'glm-4.5': '0727-360B-API',
+      'glm-4.5-air': '0727-106B-API',
+      'glm-4.1v-9b-thinking': 'GLM-4.1V-Thinking-FlashX',
+      'z1-rumination': 'deep-research',
+      'z1-32b': 'zero',
+      'glm-4-32b': 'glm-4-air-250414',
       // Also handle uppercase input
       'GLM-5.3': 'glm-5.3',
-      'GLM-5.3-Flash': 'glm-5.3-flash',
+      'GLM-5.3-Flash': 'x-preview-l',
       'GLM-5.2': 'glm-5.2',
-      'GLM-5.1': 'GLM-5.1',
       'GLM-5-Turbo': 'GLM-5-Turbo',
       'GLM-5V-Turbo': 'GLM-5v-Turbo',
       'GLM-5v-Turbo': 'GLM-5v-Turbo',
-      'GLM-5': 'glm-5',
       'GLM-4.7': 'glm-4.7',
+      'GLM-4.6V': 'glm-4.6v',
+      'GLM-4.5': '0727-360B-API',
+      'GLM-4.5-Air': '0727-106B-API',
+      'GLM-4.1V-9B-Thinking': 'GLM-4.1V-Thinking-FlashX',
+      'Z1-Rumination': 'deep-research',
+      'Z1-32B': 'zero',
+      'GLM-4-32B': 'glm-4-air-250414',
     }
     const mappedModel = modelMapping[request.model] || modelMapping[request.model.toLowerCase()] || request.model
     
@@ -523,7 +623,7 @@ export class ZaiAdapter {
       hostname: 'chat.z.ai',
       protocol: 'https:',
       referrer: '',
-      title: 'Z.ai - Free AI Chatbot & Agent powered by GLM-5.3, GLM-5, and more',
+      title: 'Z.ai - Free AI Chatbot & Agent powered by GLM-5.3, GLM-5.2, and more',
       timezone_offset: '-480',
       local_time: new Date().toISOString(),
       utc_time: new Date().toUTCString(),
@@ -535,25 +635,54 @@ export class ZaiAdapter {
       signature_timestamp: String(timestamp),
     })
 
-    const response = await axios.post(
-      `${ZAI_API_BASE}/api/v2/chat/completions?${queryParams.toString()}`,
-      requestBody,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          ...buildZaiHeaders(),
-          'X-Signature': signature,
-          'X-FE-Version': X_FE_VERSION,
-          'Cookie': `token=${token}`,
-          Referer: `${ZAI_API_BASE}/c/${chatId}`,
-          Priority: 'u=1, i',
-        },
-        responseType: 'stream',
-        timeout: 120000,
-        validateStatus: () => true,
+    // curl-cffi primary (TLS impersonation), axios fallback
+    const chatHeaders = {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'X-Signature': signature,
+      'X-FE-Version': X_FE_VERSION,
+      'Cookie': `token=${token}`,
+      Referer: `${ZAI_API_BASE}/c/${chatId}`,
+      Priority: 'u=1, i',
+    }
+
+    let response: AxiosResponse | null = null
+    if (this.session) {
+      try {
+        const res = await this.session.post(
+          `${ZAI_API_BASE}/api/v2/chat/completions?${queryParams.toString()}`,
+          {
+            data: requestBody,
+            headers: { ...this.headers, ...chatHeaders },
+            timeout: 120,
+          }
+        )
+        response = ZaiAdapter.wrapCurlResponse(res)
+        console.log('[Z.ai] Chat completion via curl-cffi (TLS impersonation)')
+      } catch (e) {
+        console.warn('[Z.ai] curl-cffi chat failed, falling back to axios:', e)
       }
-    )
+    }
+
+    if (!response) {
+      response = await axios.post(
+        `${ZAI_API_BASE}/api/v2/chat/completions?${queryParams.toString()}`,
+        requestBody,
+        {
+          headers: {
+            ...chatHeaders,
+            ...buildZaiHeaders(),
+          },
+          responseType: 'stream',
+          timeout: 120000,
+          validateStatus: () => true,
+        }
+      )
+    }
+
+    if (!response) {
+      throw new Error('Failed to reach Z.ai chat (both curl-cffi and axios failed)')
+    }
 
     console.log('[Z.ai] Response status:', response.status)
     if (response.status !== 200) {

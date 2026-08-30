@@ -151,10 +151,50 @@ router.post('/completions', async (ctx: Context) => {
   )
 
   if (!selection) {
+    const errorMessage = `No available account for model: ${request.model}`
+    const diagnostics = loadBalancer.getNoAccountDiagnostics(request.model, preferredProviderId)
+
+    storeManager.addLog('warn', `[LoadBalancer] ${diagnostics}`, {
+      requestId,
+      providerId: preferredProviderId,
+      model: request.model,
+      error: errorMessage,
+    })
+
+    storeManager.addRequestLog({
+      timestamp: startTime,
+      status: 'error',
+      statusCode: 503,
+      method: 'POST',
+      url: '/v1/chat/completions',
+      model: request.model,
+      actualModel: request.model,
+      providerId: preferredProviderId || '',
+      providerName: preferredProviderId || '',
+      accountId: '',
+      accountName: '',
+      requestBody: JSON.stringify(request),
+      userInput: extractUserInput(request.messages),
+      webSearch: request.web_search,
+      reasoningEffort: request.reasoning_effort,
+      responseStatus: 503,
+      responseBody: JSON.stringify({
+        error: {
+          message: errorMessage,
+          type: 'service_unavailable_error',
+          param: null,
+          code: 'no_available_account',
+        },
+      }),
+      latency: Date.now() - startTime,
+      isStream: request.stream || false,
+      errorMessage,
+    })
+
     ctx.status = 503
     ctx.body = {
       error: {
-        message: `No available account for model: ${request.model}`,
+        message: errorMessage,
         type: 'service_unavailable_error',
         param: null,
         code: 'no_available_account',

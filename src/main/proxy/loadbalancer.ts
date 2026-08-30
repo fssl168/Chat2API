@@ -318,6 +318,36 @@ export class LoadBalancer {
   }
 
   /**
+   * Build a diagnostic string explaining why no account is available
+   * for a given model. Called on the 503 path so the failure is traceable
+   * (the old 503 branch logged nothing).
+   */
+  getNoAccountDiagnostics(model: string, preferredProviderId?: string): string {
+    const providers = storeManager.getProviders()
+    const lines: string[] = providers.map(provider => {
+      const enabled = provider.enabled
+      const supports = enabled ? this.providerSupportsModel(provider, model) : false
+      const accounts = enabled ? storeManager.getAccountsByProviderId(provider.id, false) : []
+      const active = accounts.filter(a => a.status === 'active').length
+      const available = enabled && supports
+        ? accounts.filter(a => this.isAccountAvailable(a)).length
+        : 0
+      return `[${provider.id}] enabled=${enabled} supports=${supports} total=${accounts.length} active=${active} available=${available}`
+    })
+    const effectiveModels = preferredProviderId
+      ? storeManager.getEffectiveModels(preferredProviderId)
+      : []
+    return (
+      `no_available_account model="${model}"` +
+      (preferredProviderId ? ` preferredProvider="${preferredProviderId}"` : '') +
+      `\n  Providers:\n    ${lines.join('\n    ')}` +
+      (preferredProviderId
+        ? `\n  preferredProvider effectiveModels: ${effectiveModels.map(m => m.displayName).join(', ') || '(empty)'}`
+        : '')
+    )
+  }
+
+  /**
    * Get all available models
    */
   getAvailableModels(): string[] {
