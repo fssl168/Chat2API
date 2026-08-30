@@ -1,4 +1,6 @@
 import axios, { AxiosError } from 'axios'
+import { createRequire } from 'module'
+const require = createRequire(import.meta.url)
 import { getBuiltinProvider } from './builtin'
 import type { Provider, ProviderCheckResult, Account } from '../../shared/types'
 import type { BuiltinProviderConfig } from '../store/types'
@@ -153,6 +155,8 @@ export class ProviderChecker {
           account.credentials.user_id,
           account.credentials.ph_token
         )
+      case 'agnes':
+        return this.checkAgnesToken(account.credentials.token, builtinConfig)
       default:
         if (!builtinConfig.tokenCheckEndpoint) {
           return { valid: true }
@@ -592,6 +596,81 @@ export class ProviderChecker {
       userInfo: {
         name: 'Perplexity User',
       },
+    }
+  }
+
+  /**
+   * Agnes token validation.
+   * Agnes upstream rejects the bare axios TLS fingerprint at the handshake
+   * ("Client network socket disconnected before secure TLS connection was
+   * established"), so primary path uses curl-cffi with chrome131 impersonation
+   * (mirrors the agnes proxy adapter). Falls back to axios on any curl-cffi
+   * failure so a non-fingerprint network error still surfaces a clean message.
+   */
+  private static async checkAgnesToken(
+    token: string,
+    config: BuiltinProviderConfig
+  ): Promise<TokenCheckResult> {
+    const url = `${config.apiEndpoint.replace('/api', '')}${config.tokenCheckEndpoint}`
+    const headers: Record<string, string> = {
+      ...config.headers,
+      'Accept': 'application/json',
+      'Origin': 'https://app.agnes-ai.com',
+      'Referer': 'https://app.agnes-ai.com/',
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    }
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+    }
+
+    // Primary: curl-cffi with browser TLS impersonation (chrome131)
+    try {
+      const { Session } = require('curl-cffi-node') as typeof import('curl-cffi-node')
+      const session = new Session({
+        impersonate: 'chrome131',
+        headers,
+        timeout: 15,
+        followRedirects: true,
+      })
+      const res = await session.get(url, { headers, timeout: 15 })
+      if (res.status >= 200 && res.status < 300) {
+        return { valid: true }
+      }
+      if (res.status === 401) {
+        return { valid: false, error: 'Authentication failed, please check credentials' }
+      }
+      return { valid: false, error: `Validation failed: HTTP ${res.status}` }
+    } catch (error) {
+      // Fall through to axios below (curl-cffi unavailable or handshake error)
+      console.warn('[Agnes] curl-cffi validation failed, falling back to axios:', error)
+    }
+
+    try {
+      const response = await axios({
+        method: config.tokenCheckMethod || 'GET',
+        url,
+        headers,
+        timeout: CHECK_TIMEOUT,
+        validateStatus: () => true,
+      })
+
+      if (response.status >= 200 && response.status < 300) {
+        return { valid: true }
+      }
+
+      if (response.status === 401) {
+        return { valid: false, error: 'Authentication failed, please check credentials' }
+      }
+
+      return { valid: false, error: `Validation failed: HTTP ${response.status}` }
+    } catch (error) {
+      return {
+        valid: false,
+        error: error instanceof AxiosError
+          ? error.message
+          : 'Connection failed',
+      }
     }
   }
 
