@@ -28,6 +28,8 @@ interface ChatCompletionRequest {
   messages: AgnesMessage[]
   stream?: boolean
   temperature?: number
+  max_tokens?: number
+  top_p?: number
   tools?: any[]
   tool_choice?: any
 }
@@ -84,6 +86,12 @@ export class AgnesAdapter {
 
   /**
    * Send chat completion request directly to Agnes BFF
+   *
+   * Mirrors the verified forwarding mechanism from the reference gateway
+   * (D:\leanpython\agnes server.js / agnes_bff_gateway.py):
+   *   - BFF requires X-App-Id: 1, X-Platform: 1, X-User-Language headers
+   *   - plain TLS (axios) works fine — TLS impersonation is NOT required
+   *   - forward the request body mostly as-is (model, messages, stream, ...)
    */
   async chatCompletion(request: ChatCompletionRequest): Promise<{ response: AxiosResponse }> {
     const token = await this.acquireToken()
@@ -93,12 +101,14 @@ export class AgnesAdapter {
       content: typeof msg.content === 'string' ? msg.content : '',
     }))
 
-    const payload = {
+    const payload: Record<string, unknown> = {
       model: request.model,
       messages,
       stream: request.stream ?? false,
-      ...(request.temperature !== undefined && { temperature: request.temperature }),
     }
+    if (request.temperature !== undefined) payload['temperature'] = request.temperature
+    if (request.max_tokens !== undefined) payload['max_tokens'] = request.max_tokens
+    if (request.top_p !== undefined) payload['top_p'] = request.top_p
 
     console.log('[Agnes] Sending request to:', AGNES_BFF_URL)
     logManager.log('info', '[Agnes] Sending request to: ' + AGNES_BFF_URL)
@@ -106,7 +116,18 @@ export class AgnesAdapter {
     let response: any
     let lastError: Error | null = null
 
-    // Primary: axios (reliable TLS verification with system CA store)
+    // BFF-required headers (verified in reference gateway)
+    const bffHeaders: Record<string, string> = {
+      ...this.headers,
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'Accept': request.stream ? 'text/event-stream' : 'application/json',
+      'X-App-Id': '1',
+      'X-Platform': '1',
+      'X-User-Language': 'zh-CN',
+    }
+
+    // Primary: axios (plain TLS, matches reference gateway)
     console.log('[Agnes] Using axios (primary)')
     logManager.log('info', '[Agnes] Using axios (primary)')
     try {
@@ -114,12 +135,7 @@ export class AgnesAdapter {
         `${AGNES_BFF_URL}/v1/chat/completions`,
         payload,
         {
-          headers: {
-            ...this.headers,
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            'Accept': request.stream ? 'text/event-stream' : 'application/json',
-          },
+          headers: bffHeaders,
           timeout: 120000,
           validateStatus: () => true,
           responseType: request.stream ? 'stream' : 'json',
@@ -139,11 +155,7 @@ export class AgnesAdapter {
       try {
         const res = await this.session.post(`${AGNES_BFF_URL}/v1/chat/completions`, {
           data: payload,
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            'Accept': request.stream ? 'text/event-stream' : 'application/json',
-          },
+          headers: bffHeaders,
           timeout: 120,
         })
         // Wrap curl-cffi Response into AxiosResponse-like shape for stream handler

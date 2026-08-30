@@ -615,10 +615,9 @@ export class ProviderChecker {
     const headers: Record<string, string> = {
       ...config.headers,
       'Accept': 'application/json',
-      'Origin': 'https://app.agnes-ai.com',
-      'Referer': 'https://app.agnes-ai.com/',
-      'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+      'X-App-Id': '1',
+      'X-Platform': '1',
+      'X-User-Language': 'zh-CN',
     }
     if (token) {
       headers['Authorization'] = `Bearer ${token}`

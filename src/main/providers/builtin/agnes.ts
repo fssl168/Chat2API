@@ -10,6 +10,9 @@ export const agnesConfig: BuiltinProviderConfig = {
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
+    'X-App-Id': '1',
+    'X-Platform': '1',
+    'X-User-Language': 'zh-CN',
   },
   enabled: true,
   description: 'Agnes AI - Cookie-based authentication via app.agnes-ai.com',

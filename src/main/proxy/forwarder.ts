@@ -1374,6 +1374,8 @@ export class RequestForwarder {
         messages: transformedRequest.messages as any,
         stream: transformedRequest.stream,
         temperature: transformedRequest.temperature,
+        max_tokens: transformedRequest.max_tokens,
+        top_p: transformedRequest.top_p,
       })
 
       const latency = Date.now() - startTime
